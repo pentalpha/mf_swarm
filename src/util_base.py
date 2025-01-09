@@ -72,6 +72,12 @@ def write_parsed_goa(annotations, file_path):
         line = '\t'.join(cells)
         output.write(line+'\n')
 
+def concat_lists(vecs: list):
+    vec = []
+    for v in vecs:
+        vec += v
+    return vec
+
 def concat_vecs(vecs: list):
     vec = []
     for v in vecs:
