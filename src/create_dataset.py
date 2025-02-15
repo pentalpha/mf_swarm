@@ -11,6 +11,7 @@ import networkx as nx
 import numpy as np
 
 from dimension_db import DimensionDB
+from parquet_loading import VectorLoader
 from util_base import concat_lists, run_command
 
 dataset_types = {
@@ -35,10 +36,11 @@ def load_annotation_terms(file_path: str):
     return by_protein
 
 class Dataset:
-    def __init__(self, dataset_path = None, dimension_db: DimensionDB = None, min_proteins_per_mf: int = None, dataset_type: str = None) -> None:
+    def __init__(self, dataset_path = None, dimension_db: DimensionDB = None, 
+                 min_proteins_per_mf: int = None, dataset_type: str = None) -> None:
         if dataset_path == None:
             self.new_dataset = True
-            self.create_new_dataset(dimension_db, min_proteins_per_mf, dataset_type)
+            self.create_new_dataset(dimension_db, min_proteins_per_mf,  )
         else:
             self.start_from_dir(dataset_path)
             self.new_dataset = False
@@ -46,15 +48,19 @@ class Dataset:
     def start_from_dir(dataset_path: str):
         pass
 
-    def create_new_dataset(self, dimension_db: DimensionDB, min_proteins_per_mf: int, dataset_type: str):
+    def create_new_dataset(self, dimension_db: DimensionDB, 
+                           min_proteins_per_mf: int, dataset_type: str):
         self.dataset_params = {'release_n': dimension_db.release_dir.split("_")[-1], 'min_ann': str(min_proteins_per_mf), 'dataset_type': dataset_type}
         self.dataset_name = dataset_type + '_' + '{date:%Y-%m-%d_%H-%M-%S}'.format(date=datetime.now())
         filtered_ann, go_freqs = self.create_filtered_annotation(dimension_db, min_proteins_per_mf)
 
+        parquet_loader = VectorLoader(dimension_db.release_dir)
         if dataset_type == 'base_benchmark':
             self.go_clusters = Dataset.base_benchmark_goids_clustering(dimension_db, go_freqs)
+            self.datasets_to_load = parquet_loader.plm_names
+        
         for clustername in self.go_clusters.keys():
-            print(clustername, 'created')
+            print(clustername, 'cluster created')
         
         self.go_ids = concat_lists(self.go_clusters.values())
         for k in filtered_ann.keys():
@@ -67,7 +73,12 @@ class Dataset:
         print(len(self.ids), 'proteins')
         print(len(self.go_ids), 'go ids')
 
-    def base_benchmark_goids_clustering(dimension_db, go_freqs, top_worst_perc=33):
+        #find go IDs for each cluster
+        #create parquet file for each cluster
+        #filter parquet by removing lines with NaN
+        #update ids list by removing ids not found anymore
+
+    def base_benchmark_goids_clustering(dimension_db, go_freqs, top_worst_perc=35):
         go_graph = obonet.read_obo(dimension_db.go_basic_path)
         root = 'GO:0003674'
         go_levels_2 = {}
@@ -94,16 +105,17 @@ class Dataset:
             levels[level].append(goid)
 
         clusters = {}
-        for l in [1, 4, 7]:
+        for l in [4, 5, 6, 7]:
             gos = levels[l]
             gos.sort(key=lambda g: go_freqs[g])
             print(len(gos), 'GO IDs at level', l)
-            if not l in [1, '1']:
+            '''if not l in [1, '1']:
                 #print('not level 1')
                 index = int(len(gos)*(top_worst_perc/100))
                 worst_gos = gos[:index]
             else:
-                worst_gos = gos[:8]
+                worst_gos = gos[:8]'''
+            worst_gos = gos[:60]
             last_min_freq = go_freqs[worst_gos[0]]
             max_freq = go_freqs[worst_gos[-1]]
             cluster_name = ('Level-'+str(l)+'_Freq-'+str(last_min_freq)+'-'

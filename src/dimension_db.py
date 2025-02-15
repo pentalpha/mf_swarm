@@ -11,11 +11,16 @@ class DimensionDB:
         print('Creating file names')
         self.release_dir        = path.join(dimension_db_releases_dir, 'release_' + dimension_db_release_n)
         self.release_url        = protein_dimension_db_url + '/release_'+ dimension_db_release_n
-        self.plm_names          = ['ankh_base', 'ankh_large', 'esm2_t6', 'esm2_t12', 'esm2_t30', 'esm2_t33', 'esm2_t36', 'prottrans']
+        self.plm_names          = ['ankh_base', 'ankh_large', 
+                                   'esm2_t6', 'esm2_t12', 'esm2_t30', 'esm2_t33', 'esm2_t36', 
+                                   'prottrans']
         self.emb_extension      = '.npy.gz'
+        self.new_emb_extension  = '.parquet'
         self.taxa_profile_names = ['taxa_profile_128', 'taxa_profile_256']
         self.taxa_onehot_names  = ['taxa_256', 'taxa_128']
         self.top_taxa_names     = ['top_taxa_128', 'top_taxa_256']
+
+        run_command(['mkdir -p', self.release_dir])
 
         self.feature_paths = {}
         for n in self.taxa_onehot_names:
@@ -23,7 +28,7 @@ class DimensionDB:
         for n in self.taxa_profile_names:
             self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + self.emb_extension)
         for n in self.plm_names:
-            self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + self.emb_extension)
+            self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + self.new_emb_extension)
         for n in self.top_taxa_names:
             self.feature_paths[n] = path.join(self.release_dir, n + '.txt')
 
