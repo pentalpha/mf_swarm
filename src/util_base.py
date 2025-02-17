@@ -2,6 +2,7 @@ from glob import glob
 import gzip
 from os import path
 import subprocess
+from typing import List
 import numpy as np
 
 proj_dir = path.dirname(path.dirname(__file__))
@@ -95,7 +96,7 @@ def label_lists_to_onehot(label_lists: list):
     for label_list in label_lists:
         all_labels.update(label_list)
     all_labels = sorted(list(all_labels))
-    label_pos = {all_labels[pos]: pos for pos in range(len(all_labels))}
+    label_pos = {label: pos for pos, label in enumerate(all_labels)}
 
     n_labels = len(all_labels)
     print(n_labels, 'GO ids')
@@ -106,7 +107,12 @@ def label_lists_to_onehot(label_lists: list):
             vec[label_pos[go]] = 1
         one_hot.append(np.array(vec))
 
-    return np.asarray(one_hot)
+    return np.asarray(one_hot), all_labels
+
+def create_go_labels(ids: List[str], ann: dict):
+    label_lists = [ann[protid] for protid in ids]
+    label_vecs, labels_sorted = label_lists_to_onehot(label_lists)
+    return np.asarray(label_vecs), labels_sorted
 
 def create_labels_matrix(labels: dict, ids_allowed: list, gos_allowed: list):
     label_vecs = []

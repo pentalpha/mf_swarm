@@ -12,7 +12,7 @@ import numpy as np
 
 from dimension_db import DimensionDB
 from parquet_loading import VectorLoader
-from util_base import concat_lists, run_command
+from util_base import concat_lists, create_go_labels, run_command
 
 dataset_types = {
     'base_benchmark',
@@ -40,43 +40,94 @@ class Dataset:
                  min_proteins_per_mf: int = None, dataset_type: str = None) -> None:
         if dataset_path == None:
             self.new_dataset = True
-            self.create_new_dataset(dimension_db, min_proteins_per_mf,  )
+            self.create_new_dataset(dimension_db, min_proteins_per_mf, dataset_type)
         else:
             self.start_from_dir(dataset_path)
             self.new_dataset = False
     
-    def start_from_dir(dataset_path: str):
-        pass
-
+    def start_from_dir(self, dataset_path: str):
+        self.dataset_params = json.load(open(path.join(dataset_path, 'params.json'), 'r'))
+        self.release_n = self.dataset_params['release_n']
+        self.min_proteins_per_mf = int(self.dataset_params['min_proteins_per_mf'])
+        self.dataset_type = self.dataset_params['dataset_type']
+        self.dataset_name = self.dataset_params['dataset_name']
+        self.datasets_to_load = self.dataset_params['datasets_to_load']
+        self.go_clusters = json.load(gzip.open(path.join(dataset_path, 'go_clusters.json.gz'), 'rt'))
+        self.ids = open(path.join(dataset_path, 'ids.txt'), 'r').read().split('\n')
+        self.go_ids = open(path.join(dataset_path, 'go_ids.txt'), 'r').read().split('\n')
+    
     def create_new_dataset(self, dimension_db: DimensionDB, 
                            min_proteins_per_mf: int, dataset_type: str):
-        self.dataset_params = {'release_n': dimension_db.release_dir.split("_")[-1], 'min_ann': str(min_proteins_per_mf), 'dataset_type': dataset_type}
+        tmp_dir = path.expanduser('~/tmp')
+        if not path.exists(tmp_dir):
+            mkdir(tmp_dir)
+        
+        self.release_n = dimension_db.release_dir.split("_")[-1]
+        self.min_proteins_per_mf = min_proteins_per_mf
+        self.dataset_type = dataset_type
         self.dataset_name = dataset_type + '_' + '{date:%Y-%m-%d_%H-%M-%S}'.format(date=datetime.now())
+        
+        self.dataset_params = {'release_n': self.release_n, 
+            'min_ann': str(min_proteins_per_mf), 
+            'dataset_type': dataset_type,
+            'dataset_name': self.dataset_name}
+
         filtered_ann, go_freqs = self.create_filtered_annotation(dimension_db, min_proteins_per_mf)
 
         parquet_loader = VectorLoader(dimension_db.release_dir)
         if dataset_type == 'base_benchmark':
-            self.go_clusters = Dataset.base_benchmark_goids_clustering(dimension_db, go_freqs)
-            self.datasets_to_load = parquet_loader.plm_names
-        
+            go_clusters = Dataset.base_benchmark_goids_clustering(dimension_db, go_freqs)
+            self.datasets_to_load = dimension_db.plm_names
+        self.dataset_params['datasets_to_load'] = self.datasets_to_load
+        self.go_clusters = {}
+        print('Making datasets for clusters')
+        for cluster_name, cluster_gos in tqdm(go_clusters.items(), total = len(go_clusters)):
+            print('Filtering annotation')
+            cluster_ann = {k: v.intersection(cluster_gos) for k, v in filtered_ann.items()}
+            no_ann_ids = [k for k, v in cluster_ann.items() if len(v) == 0]
+            for protein_id in no_ann_ids:
+                del cluster_ann[protein_id]
+            
+            cluster_ids = [p for p in dimension_db.ids if p in cluster_ann]
+            print('Creating DF')
+            cluster_df = parquet_loader.load_vectors_by_ids(cluster_ids, self.datasets_to_load,
+                                                        remove_na=True)
+            
+            print('Deleting IDs who could not be loaded')
+            loaded_ids = cluster_df['id'].to_list()
+            for x in cluster_ids:
+                if not x in loaded_ids:
+                    del cluster_ann[x]
+            
+            print('Creating labels for dataset df')
+            labels, cluster_go_proper_order = create_go_labels(loaded_ids, cluster_ann)
+            cluster_df = cluster_df.with_columns(
+                labels=labels
+            )
+            #cluster_df['labels'] = labels_np
+
+            print('Saving parquet to tmp')
+            df_path = tmp_dir + '/' + self.dataset_name + '-' + cluster_name + '.parquet'
+            print(len(loaded_ids), 'proteins')
+            print(cluster_df)
+            cluster_df.write_parquet(df_path)
+            del cluster_df
+
+            self.go_clusters[cluster_name] = {
+                'id': loaded_ids,
+                'go': cluster_go_proper_order,
+                'df_path': df_path
+            }
+
         for clustername in self.go_clusters.keys():
             print(clustername, 'cluster created')
         
-        self.go_ids = concat_lists(self.go_clusters.values())
-        for k in filtered_ann.keys():
-            filtered_ann[k] = filtered_ann[k].intersection(self.go_ids)
-        filtered_ann = {k: v for k, v in filtered_ann.items() if len(v) > 0}
-        frequent_prots = set(filtered_ann.keys())
-
-        self.ids = [p for p in dimension_db.ids if p in filtered_ann]
-        self.ann_dict = {p: sorted(filtered_ann[p], key=lambda g: go_freqs[g]) for p in self.ids}
+        self.go_ids = sorted(set(concat_lists([g['go'] for g in self.go_clusters.values()])))
+        all_ids = set(concat_lists([g['id'] for g in self.go_clusters.values()]))
+        self.ids = [p for p in dimension_db.ids if p in all_ids]
+        
         print(len(self.ids), 'proteins')
         print(len(self.go_ids), 'go ids')
-
-        #find go IDs for each cluster
-        #create parquet file for each cluster
-        #filter parquet by removing lines with NaN
-        #update ids list by removing ids not found anymore
 
     def base_benchmark_goids_clustering(dimension_db, go_freqs, top_worst_perc=35):
         go_graph = obonet.read_obo(dimension_db.go_basic_path)
@@ -169,9 +220,18 @@ class Dataset:
         if not path.exists(outputdir):
             run_command(['mkdir -p', outputdir])
         json.dump(self.dataset_params, open(path.join(outputdir, 'params.json'), 'w'), indent=4)
-        json.dump(self.ann_dict, gzip.open(path.join(outputdir, 'mf_ann.json.gz'), 'wt'), indent=4)
+        for cluster_name, cluster_dict in self.go_clusters.items():
+            df_path_tmp = cluster_dict['df_path']
+            df_path = outputdir + '/' + cluster_name + '.parquet'
+            run_command(['mv', df_path_tmp, df_path])
+            cluster_dict['df_path'] = df_path
+
+        json.dump(self.go_clusters, 
+            gzip.open(path.join(outputdir, 'go_clusters.json.gz'), 'wt'), indent=4)
         ids_str = '\n'.join(self.ids)
         open(path.join(outputdir, 'ids.txt'), 'w').write(ids_str)
+        gos_str = '\n'.join(self.go_ids)
+        open(path.join(outputdir, 'go_ids.txt'), 'w').write(gos_str)
 
 if __name__ == "__main__":
     dimension_db_releases_dir = sys.argv[1]
