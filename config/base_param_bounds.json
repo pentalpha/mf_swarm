@@ -1,0 +1,73 @@
+{
+    "prottrans": {
+        "l1_dim": [500,700],
+        "l2_dim": [250,400],
+        "dropout_rate": [0.4, 0.55],
+        "leakyrelu_1_alpha": [0.06, 0.14]
+    },
+
+    "ankh_base": {
+        "l1_dim": [500,700],
+        "l2_dim": [250,400],
+        "dropout_rate": [0.4, 0.55],
+        "leakyrelu_1_alpha": [0.06, 0.14]
+    },
+    "ankh_large": {
+        "l1_dim": [500,1200],
+        "l2_dim": [300,700],
+        "dropout_rate": [0.3, 0.7],
+        "leakyrelu_1_alpha": [0.05, 0.18]
+    },
+
+    "esm2_t6": {
+        "l1_dim": [200,600],
+        "l2_dim": [150,300],
+        "dropout_rate": [0.3, 0.7],
+        "leakyrelu_1_alpha": [0.05, 0.18]
+    },
+    "esm2_t12": {
+        "l1_dim": [200,600],
+        "l2_dim": [150,300],
+        "dropout_rate": [0.3, 0.7],
+        "leakyrelu_1_alpha": [0.05, 0.18]
+    },
+    "esm2_t30": {
+        "l1_dim": [500,700],
+        "l2_dim": [250,400],
+        "dropout_rate": [0.4, 0.55],
+        "leakyrelu_1_alpha": [0.06, 0.14]
+    },
+    "esm2_t33": {
+        "l1_dim": [500,700],
+        "l2_dim": [250,400],
+        "dropout_rate": [0.4, 0.55],
+        "leakyrelu_1_alpha": [0.06, 0.14]
+    },
+    "esm2_t36": {
+        "l1_dim": [500,1200],
+        "l2_dim": [300,700],
+        "dropout_rate": [0.3, 0.7],
+        "leakyrelu_1_alpha": [0.05, 0.18]
+    },
+
+    "taxa": {
+        "l1_dim": [100, 240],
+        "l2_dim": [64, 140],
+        "dropout_rate": [0.4, 0.6],
+        "leakyrelu_1_alpha": [0.03, 0.15]
+    },
+    "taxa_profile": {
+        "l1_dim": [160, 240],
+        "l2_dim": [100, 140],
+        "dropout_rate": [0.45, 0.55],
+        "leakyrelu_1_alpha": [0.03, 0.9]
+    },
+    "final": {
+        "dropout_rate": [0.4,0.6],
+        "final_dim": [200,300],
+        "patience": [7,13],
+        "epochs": [35,45],
+        "learning_rate": [0.0003,0.0006],
+        "batch_size": [180,300]
+    }
+}

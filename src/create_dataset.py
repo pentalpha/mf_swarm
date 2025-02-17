@@ -1,5 +1,6 @@
 from collections import Counter
 from datetime import datetime
+from glob import glob
 import json
 from math import floor
 from os import mkdir, path
@@ -35,6 +36,32 @@ def load_annotation_terms(file_path: str):
 
     return by_protein
 
+def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release_n):
+    dataset_paths = glob(datasets_dir+'/'+dataset_type+'_*')
+    #TODO sort by modification time
+    dataset_paths.sort()
+
+    matching = []
+    print('Looking for datasets at', datasets_dir)
+    print(dataset_type, min_proteins_per_mf, release_n)
+    for p in dataset_paths:
+        print('\t'+p)
+        dataset_params = json.load(open(path.join(p, 'params.json'), 'r'))
+        if 'release_n' in dataset_params and 'min_ann' in dataset_params:
+            if (dataset_params['release_n'] == release_n 
+                and int(dataset_params['min_ann']) == min_proteins_per_mf):
+                matching.append(p)
+            else:
+                print('\tvalues not matching')
+        else:
+            print('\tmandatory keys not found')
+    
+    print('Found:', matching)
+    if len(matching) > 0:
+        return matching[-1]
+    else:
+        return None
+    
 class Dataset:
     def __init__(self, dataset_path = None, dimension_db: DimensionDB = None, 
                  min_proteins_per_mf: int = None, dataset_type: str = None) -> None:
@@ -48,7 +75,7 @@ class Dataset:
     def start_from_dir(self, dataset_path: str):
         self.dataset_params = json.load(open(path.join(dataset_path, 'params.json'), 'r'))
         self.release_n = self.dataset_params['release_n']
-        self.min_proteins_per_mf = int(self.dataset_params['min_proteins_per_mf'])
+        self.min_proteins_per_mf = int(self.dataset_params['min_ann'])
         self.dataset_type = self.dataset_params['dataset_type']
         self.dataset_name = self.dataset_params['dataset_name']
         self.datasets_to_load = self.dataset_params['datasets_to_load']
