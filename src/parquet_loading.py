@@ -4,6 +4,8 @@ import polars as pl
 from typing import List
 from os import path, listdir
 
+from tqdm import tqdm
+
 class VectorLoader:
     def __init__(self, parquet_directory: str):
         """
@@ -36,7 +38,8 @@ class VectorLoader:
         loaded_data = []
         ids = None
         ids_str = ""
-        for name in dataset_names:
+        print('Scanning features')
+        for name in tqdm(dataset_names):
             #print('Loading', name)
             p = self.parquets[name]
             q = (

@@ -10,6 +10,7 @@ from tqdm import tqdm
 import obonet
 import networkx as nx
 import numpy as np
+import polars as pl
 
 from dimension_db import DimensionDB
 from parquet_loading import VectorLoader
@@ -22,21 +23,7 @@ dataset_types = {
     'small_swarm'
 }
 
-#molecular function root
-irrelevant_mfs = {'GO:0003674'}
-
-def load_annotation_terms(file_path: str):
-    by_protein = {}
-    for rawline in gzip.open(file_path, 'rt'):
-        cells = rawline.rstrip('\n').split("\t")
-        uniprot = cells[0]
-        mfs = cells[1].split(',')
-        mfs = [x for x in mfs if x.startswith("GO:")]
-        by_protein[uniprot] = mfs
-
-    return by_protein
-
-def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release_n):
+def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release_n, val_perc):
     dataset_paths = glob(datasets_dir+'/'+dataset_type+'_*')
     #TODO sort by modification time
     dataset_paths.sort()
@@ -47,9 +34,10 @@ def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release
     for p in dataset_paths:
         print('\t'+p)
         dataset_params = json.load(open(path.join(p, 'params.json'), 'r'))
-        if 'release_n' in dataset_params and 'min_ann' in dataset_params:
+        if all([k in dataset_params for k in ['release_n', 'min_ann', 'val_perc']]):
             if (dataset_params['release_n'] == release_n 
-                and int(dataset_params['min_ann']) == min_proteins_per_mf):
+                and int(dataset_params['min_ann']) == min_proteins_per_mf
+                and dataset_params['val_perc'] == val_perc):
                 matching.append(p)
             else:
                 print('\tvalues not matching')
@@ -63,11 +51,11 @@ def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release
         return None
     
 class Dataset:
-    def __init__(self, dataset_path = None, dimension_db: DimensionDB = None, 
-                 min_proteins_per_mf: int = None, dataset_type: str = None) -> None:
+    def __init__(self, dataset_path = None, dimension_db: DimensionDB = None, min_proteins_per_mf: int = None, 
+            dataset_type: str = None, val_perc: float = None) -> None:
         if dataset_path == None:
             self.new_dataset = True
-            self.create_new_dataset(dimension_db, min_proteins_per_mf, dataset_type)
+            self.create_new_dataset(dimension_db, min_proteins_per_mf, dataset_type, val_perc)
         else:
             self.start_from_dir(dataset_path)
             self.new_dataset = False
@@ -82,9 +70,10 @@ class Dataset:
         self.go_clusters = json.load(gzip.open(path.join(dataset_path, 'go_clusters.json.gz'), 'rt'))
         self.ids = open(path.join(dataset_path, 'ids.txt'), 'r').read().split('\n')
         self.go_ids = open(path.join(dataset_path, 'go_ids.txt'), 'r').read().split('\n')
+        self.val_perc = self.dataset_params['val_perc']
     
-    def create_new_dataset(self, dimension_db: DimensionDB, 
-                           min_proteins_per_mf: int, dataset_type: str):
+    def create_new_dataset(self, dimension_db: DimensionDB, min_proteins_per_mf: int, 
+            dataset_type: str, val_perc: float):
         tmp_dir = path.expanduser('~/tmp')
         if not path.exists(tmp_dir):
             mkdir(tmp_dir)
@@ -93,57 +82,69 @@ class Dataset:
         self.min_proteins_per_mf = min_proteins_per_mf
         self.dataset_type = dataset_type
         self.dataset_name = dataset_type + '_' + '{date:%Y-%m-%d_%H-%M-%S}'.format(date=datetime.now())
-        
+        self.val_perc = val_perc
+
         self.dataset_params = {'release_n': self.release_n, 
             'min_ann': str(min_proteins_per_mf), 
             'dataset_type': dataset_type,
-            'dataset_name': self.dataset_name}
+            'dataset_name': self.dataset_name,
+            'val_perc': val_perc}
+        traintest_set, val_set, filtered_ann, go_freqs = dimension_db.get_proteins_set(min_proteins_per_mf, val_perc)
 
-        filtered_ann, go_freqs = self.create_filtered_annotation(dimension_db, min_proteins_per_mf)
-
-        parquet_loader = VectorLoader(dimension_db.release_dir)
         if dataset_type == 'base_benchmark':
             go_clusters = Dataset.base_benchmark_goids_clustering(dimension_db, go_freqs)
             self.datasets_to_load = dimension_db.plm_names
         self.dataset_params['datasets_to_load'] = self.datasets_to_load
+
         self.go_clusters = {}
+        parquet_loader = VectorLoader(dimension_db.release_dir)
         print('Making datasets for clusters')
         for cluster_name, cluster_gos in tqdm(go_clusters.items(), total = len(go_clusters)):
             print('Filtering annotation')
             cluster_ann = {k: v.intersection(cluster_gos) for k, v in filtered_ann.items()}
-            no_ann_ids = [k for k, v in cluster_ann.items() if len(v) == 0]
-            for protein_id in no_ann_ids:
-                del cluster_ann[protein_id]
+            cluster_ann = {k: v for k, v in cluster_ann.items() if len(v) > 0}
             
             cluster_ids = [p for p in dimension_db.ids if p in cluster_ann]
-            print('Creating DF')
+            print('Creating DF', cluster_name, 'with', len(cluster_ids), 'proteins')
             cluster_df = parquet_loader.load_vectors_by_ids(cluster_ids, self.datasets_to_load,
                                                         remove_na=True)
             
             print('Deleting IDs who could not be loaded')
             loaded_ids = cluster_df['id'].to_list()
+            loaded_ids_set = set(loaded_ids)
+            could_not_be_loaded = 0
             for x in cluster_ids:
-                if not x in loaded_ids:
+                if not x in loaded_ids_set:
                     del cluster_ann[x]
+                    could_not_be_loaded += 1
+            assert could_not_be_loaded == 0
             
             print('Creating labels for dataset df')
             labels, cluster_go_proper_order = create_go_labels(loaded_ids, cluster_ann)
             cluster_df = cluster_df.with_columns(
                 labels=labels
             )
+            print(len(cluster_df), 'proteins in cluster df')
+            traintest_df = cluster_df.filter(pl.col('id').is_in(traintest_set))
+            val_df = cluster_df.filter(pl.col('id').is_in(val_set))
+            print(len(traintest_df), 'proteins in cluster traintest df')
+            print(len(val_df), 'proteins in cluster val df')
             #cluster_df['labels'] = labels_np
 
             print('Saving parquet to tmp')
-            df_path = tmp_dir + '/' + self.dataset_name + '-' + cluster_name + '.parquet'
-            print(len(loaded_ids), 'proteins')
-            print(cluster_df)
-            cluster_df.write_parquet(df_path)
+            traintest_df_path = tmp_dir + '/traintest_' + self.dataset_name + '-' + cluster_name + '.parquet'
+            val_df_path = tmp_dir + '/val_' + self.dataset_name + '-' + cluster_name + '.parquet'
+            traintest_df.write_parquet(traintest_df_path)
+            val_df.write_parquet(val_df_path)
+            del traintest_df
+            del val_df
             del cluster_df
 
             self.go_clusters[cluster_name] = {
                 'id': loaded_ids,
                 'go': cluster_go_proper_order,
-                'df_path': df_path
+                'traintest_path': traintest_df_path,
+                'val_path': val_df_path
             }
 
         for clustername in self.go_clusters.keys():
@@ -183,7 +184,19 @@ class Dataset:
             levels[level].append(goid)
 
         clusters = {}
-        for l in [4, 5, 6, 7]:
+
+        for l in [3, 4]:
+            gos = levels[l]
+            gos.sort(key=lambda g: go_freqs[g], reverse=True)
+            print(len(gos), 'GO IDs at level', l)
+            best_gos = gos[:8]
+            last_min_freq = go_freqs[best_gos[-1]]
+            max_freq = go_freqs[best_gos[0]]
+            cluster_name = ('Level-'+str(l)+'_Freq-'+str(last_min_freq)+'-'
+                    +str(max_freq)+'_N-'+str(len(best_gos)))
+            clusters[cluster_name] = best_gos
+        
+        for l in [6, 7]:
             gos = levels[l]
             gos.sort(key=lambda g: go_freqs[g])
             print(len(gos), 'GO IDs at level', l)
@@ -193,54 +206,14 @@ class Dataset:
                 worst_gos = gos[:index]
             else:
                 worst_gos = gos[:8]'''
-            worst_gos = gos[:60]
+            worst_gos = gos[:75]
             last_min_freq = go_freqs[worst_gos[0]]
             max_freq = go_freqs[worst_gos[-1]]
             cluster_name = ('Level-'+str(l)+'_Freq-'+str(last_min_freq)+'-'
                     +str(max_freq)+'_N-'+str(len(worst_gos)))
             clusters[cluster_name] = worst_gos
-
-        return clusters
-
-
-    def create_filtered_annotation(self, dimension_db: DimensionDB, min_proteins_per_mf: int):
-        all_swissprot_ids = set(dimension_db.ids)
-
-        all_annotations = load_annotation_terms(file_path=dimension_db.mf_gos_path)
-        all_proteins = set(all_annotations.keys())
-        print(len(all_proteins), 'proteins in', dimension_db.mf_gos_path)
-        all_goids = set(concat_lists([list(v) for v in all_annotations.values()]))
-        print(len(all_goids), 'GO IDs in', dimension_db.mf_gos_path)
-
-        all_annotations = {k: set(v) for k, v in all_annotations.items() if k in all_swissprot_ids}
-        all_proteins = set(all_annotations.keys())
-        print(len(all_proteins), 'uniprot proteins in', dimension_db.mf_gos_path)
-        goid_list = concat_lists([list(v) for v in all_annotations.values()])
-        goid_list = [goid for goid in goid_list if not goid in irrelevant_mfs]
-        print(len(set(goid_list)), 'GO IDs from uniprot proteins in', dimension_db.mf_gos_path)
-
-        go_counts = Counter(goid_list)
-        frequent_go_ids = set()
-        for goid, freq in go_counts.items():
-            if freq >= min_proteins_per_mf:
-                frequent_go_ids.add(goid)
-        go_counts_list = [(n, go) for go, n in go_counts.items()]
-        go_counts_list.sort(reverse=True)
-        tops = 10
-        while tops >= 0:
-            print(tops, 'top term:', go_counts_list[tops])
-            tops -= 1
-
-        print(len(frequent_go_ids), 'frequent GO IDs from uniprot proteins in', dimension_db.mf_gos_path)
-
-        for k in all_annotations.keys():
-            all_annotations[k] = all_annotations[k].intersection(frequent_go_ids)
         
-        all_annotations = {k: v for k, v in all_annotations.items() if len(v) > 0}
-        frequent_prots = set(all_annotations.keys())
-        print(len(frequent_prots), 'uniprot proteins with frequent GOs in', dimension_db.mf_gos_path)
-        go_freqs_filtered = {g: c for g, c in go_counts.items() if g in frequent_go_ids}
-        return all_annotations, go_freqs_filtered
+        return clusters
     
     def save(self, datasets_dir):
         outputdir = path.join(datasets_dir, self.dataset_name)
@@ -248,10 +221,15 @@ class Dataset:
             run_command(['mkdir -p', outputdir])
         json.dump(self.dataset_params, open(path.join(outputdir, 'params.json'), 'w'), indent=4)
         for cluster_name, cluster_dict in self.go_clusters.items():
-            df_path_tmp = cluster_dict['df_path']
-            df_path = outputdir + '/' + cluster_name + '.parquet'
-            run_command(['mv', df_path_tmp, df_path])
-            cluster_dict['df_path'] = df_path
+            df_path1_tmp = cluster_dict['traintest_path']
+            df_path1 = outputdir + '/traintest_' + cluster_name + '.parquet'
+            run_command(['mv', df_path1_tmp, df_path1])
+            cluster_dict['traintest_path'] = df_path1
+
+            df_path2_tmp = cluster_dict['val_path']
+            df_path2 = outputdir + '/val_' + cluster_name + '.parquet'
+            run_command(['mv', df_path2_tmp, df_path2])
+            cluster_dict['val_path'] = df_path2
 
         json.dump(self.go_clusters, 
             gzip.open(path.join(outputdir, 'go_clusters.json.gz'), 'wt'), indent=4)

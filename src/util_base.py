@@ -7,6 +7,9 @@ import numpy as np
 
 proj_dir = path.dirname(path.dirname(__file__))
 
+#molecular function root
+irrelevant_mfs = {'GO:0003674'}
+
 def run_command(cmd_vec, stdin="", no_output=True):
     '''Executa um comando no shell e retorna a saída (stdout) dele.'''
     cmd_vec = " ".join(cmd_vec)
