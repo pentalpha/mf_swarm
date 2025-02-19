@@ -1,6 +1,8 @@
 name: mf_swarm_base
 channels:
   - conda-forge
+  - bioconda
+  - defaults
 dependencies:
   - _libgcc_mutex=0.1=conda_forge
   - _openmp_mutex=4.5=2_gnu
@@ -35,11 +37,19 @@ dependencies:
   - readline=8.2=h8228510_1
   - setuptools=75.8.0=pyhff2d567_0
   - tk=8.6.13=noxft_h4845f30_101
-  - tzdata=2025a=h78e105d_0
   - wheel=0.45.1=pyhd8ed1ab_1
   - pip:
+      - joblib==1.4.2
       - obonet==1.1.0
+      - pandas==2.2.3
       - polars==1.22.0
       - pyarrow==19.0.0
+      - python-dateutil==2.9.0.post0
+      - pytz==2025.1
+      - scikit-learn==1.6.1
+      - scipy==1.15.2
+      - six==1.17.0
+      - threadpoolctl==3.5.0
       - tqdm==4.67.1
-prefix: /home/pita/miniforge3/envs/mf_swarm_base
+      - tzdata==2025.1
+prefix: /data/home/pitagoras/miniforge3/envs/mf_swarm_base

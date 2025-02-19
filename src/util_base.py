@@ -10,6 +10,14 @@ proj_dir = path.dirname(path.dirname(__file__))
 #molecular function root
 irrelevant_mfs = {'GO:0003674'}
 
+plm_sizes = {
+    'ankh_base': 768, 'ankh_large': 1536, 
+    'esm2_t6': 320, 'esm2_t12': 480, 
+    'esm2_t30': 640, 'esm2_t33': 1280, 
+    'esm2_t36': 2560, 
+    'prottrans': 1024
+}
+
 def run_command(cmd_vec, stdin="", no_output=True):
     '''Executa um comando no shell e retorna a saída (stdout) dele.'''
     cmd_vec = " ".join(cmd_vec)

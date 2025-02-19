@@ -1,4 +1,28 @@
 
+import json
+import os
+from os import path
+import sys
+import polars as pl
+import numpy as np
+from pickle import load, dump
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+
+import keras
+from keras.callbacks import EarlyStopping, ModelCheckpoint, LearningRateScheduler
+from keras.layers import Dense, Dropout, BatchNormalization, LeakyReLU, Concatenate, Input
+from keras.optimizers import Adam
+from keras.utils import plot_model
+from keras import Model
+from keras import backend as K
+print(keras.__version__)
+from sklearn import metrics
+
+from metaheuristics import ProblemTranslator, param_bounds, RandomSearchMetaheuristic
+from parquet_loading import load_columns_from_parquet
+from util_base import run_command, plm_sizes
+
 
 def split_train_test(ids, X, Y):
 
@@ -28,6 +52,25 @@ def split_train_test(ids, X, Y):
 
     return train_ids, train_x, train_y, test_ids, test_x, test_y
 
+def split_train_test_polars(traintest: pl.DataFrame, perc):
+
+    #print('Train/test is', len(traintest))
+    df = traintest.sample(fraction=1, shuffle=True, seed=1337)
+    test_size = int(len(traintest)*perc)
+    test, train = df.head(test_size), df.tail(-test_size)
+    #print('test is', len(test))
+    #print('train is', len(train))
+    
+    feature_columns = [c for c in df.columns if c != 'labels' and c != 'id']
+    train_ids = train['id'].to_list()
+    train_x = train.select(feature_columns)
+    train_y = train.select('labels')
+    test_ids = test['id'].to_list()
+    test_x = test.select(feature_columns)
+    test_y = test.select('labels')
+
+    return train_ids, train_x, train_y, test_ids, test_x, test_y
+
 def x_to_np(x):
     #print('Converting features to np')
     for i in range(len(x)):
@@ -36,17 +79,7 @@ def x_to_np(x):
         #print(feature_name, x[i][1].shape)
     return x
 
-def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict = default_params):
-    
-    #print('Converting features to np')
-    for i in range(len(train_x)):
-        feature_name, feature_vec = train_x[i]
-        train_x[i] = (feature_name, np.asarray([np.array(vec) for vec in feature_vec]))
-        #print(feature_name, train_x[i][1].shape)
-    for i in range(len(test_x)):
-        feature_name, feature_vec = test_x[i]
-        test_x[i] = (feature_name, np.asarray([np.array(vec) for vec in feature_vec]))
-        #print(feature_name, test_x[i][1].shape)
+def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     
     #print('go labels', train_y.shape)
     #print('go labels', test_y.shape)
@@ -58,6 +91,7 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict = def
 
     for feature_name, feature_vec in train_x:
         feature_params = params_dict[feature_name]
+        #print('Trying', feature_vec.shape, feature_name, feature_params)
         start_dim = feature_params['l1_dim']
         end_dim = feature_params['l2_dim']
         leakyrelu_1_alpha = feature_params['leakyrelu_1_alpha']
@@ -66,7 +100,7 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict = def
 
         input_network = Dense(start_dim, name=feature_name+'_dense_1')(input_start)
         input_network = BatchNormalization(name=feature_name+'_batchnorm_1')(input_network)
-        input_network = LeakyReLU(alpha=leakyrelu_1_alpha, name=feature_name+'_leakyrelu_1')(input_network)
+        input_network = LeakyReLU(negative_slope=leakyrelu_1_alpha, name=feature_name+'_leakyrelu_1')(input_network)
         input_network = Dropout(dropout_rate, name=feature_name+'_dropout_1')(input_network)
         input_network = Dense(end_dim, name=feature_name+'_dense_2')(input_network)
 
@@ -111,7 +145,11 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict = def
 
     #print('Fiting')
     x_test_vec = [x for name, x in test_x]
-    history = model.fit([x for name, x in train_x], train_y,
+    x_list = [x for name, x in train_x]
+    #print([x.shape for x in x_list], train_y.shape)
+    #print([x.shape for x in x_test_vec], test_y.shape)
+    history = model.fit(x_list, 
+        train_y,
         validation_data=(x_test_vec, test_y),
         epochs=epochs, batch_size=batch_size,
         callbacks=[lr_callback, es],
@@ -124,7 +162,7 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict = def
     return model, {'ROC AUC': float(roc_auc_score), 'Accuracy': float(acc), 
         'Proteins': len(train_y) + len(test_y)}
 
-def prepare_data(params, max_proteins=60000):
+def prepare_data(node_dict, test_perc, max_proteins=60000):
     basename = 'tmp/'+params['cluster_name']
     train_x_name = basename + '.train_x.obj'
     train_y_name = basename + '.train_y.obj'
@@ -161,44 +199,73 @@ def prepare_data(params, max_proteins=60000):
             dump(obj, open(p, 'wb'))
         
         return True
-    
 
-def train_node(params, max_proteins=60000, params_dict = default_params):
-    if 'params_dict' in params:
-        params_dict = params['params_dict']
+def sample_train_test(traintest_path, features, test_perc, max_proteins=60000):
+    base_dir = traintest_path.replace('.parquet', '_test'+str(test_perc)+"_features-"+'-'.join(features))
     
-    basename = 'tmp/'+params['cluster_name']
-    train_x_name = basename + '.train_x.obj'
-    train_y_name = basename + '.train_y.obj'
-    test_x_name = basename + '.test_x.obj'
-    test_y_name = basename + '.test_y.obj'
+    train_x_name = base_dir + '/train_x.obj'
+    train_y_name = base_dir + '/train_y.obj'
+    test_x_name = base_dir + '/test_x.obj'
+    test_y_name = base_dir + '/test_y.obj'
 
-    if all([path.exists(p) for p in [train_x_name, train_y_name, test_x_name, test_y_name]]):
-        #print('Loading input from', basename+'.*')
-        train_x = load(open(train_x_name, 'rb'))
-        train_y = load(open(train_y_name, 'rb'))
-        test_x = load(open(test_x_name, 'rb'))
-        test_y = load(open(test_y_name, 'rb'))
+    all_paths = [train_x_name, train_y_name, test_x_name, test_y_name]
+
+    if all([path.exists(p) for p in all_paths]):
+        return True
     else:
-        test_go_set = params['test_go_set']
-        go_annotations = params['go_annotations']
-        all_proteins = set()
-        for go in test_go_set:
-            annots = go_annotations[go]
-            print(go, len(annots))
-            all_proteins.update(annots)
+        print('Preparing', base_dir)
+        run_command(['mkdir -p', base_dir])
+        cols_to_use = ['id'] + features + ['labels']
+        traintest = load_columns_from_parquet(traintest_path, cols_to_use)
+        if len(traintest) > max_proteins:
+            print(traintest_path, 'is too large, sampling down')
+            traintest = traintest.sample(fraction=(max_proteins/len(traintest)), 
+                shuffle=True, seed=1337)
+        splited = split_train_test_polars(traintest, test_perc)
+        train_ids, train_x, train_y, test_ids, test_x, test_y = splited
+
+        train_x_np = []
+        for col in train_x.columns:
+            train_x_np.append((col, train_x[col].to_numpy()))
+        train_y_np = train_y['labels'].to_numpy()
+
+        test_x_np = []
+        for col in test_x.columns:
+            test_x_np.append((col, test_x[col].to_numpy()))
+        test_y_np = test_y['labels'].to_numpy()
         
-        print(len(all_proteins), 'proteins')
-        protein_list = sorted(all_proteins)
-        if len(protein_list) > max_proteins:
-            protein_list = sample(protein_list, max_proteins)
+        to_save = [(train_x_name, train_x_np), (train_y_name, train_y_np),
+                (test_x_name, test_x_np), (test_y_name, test_y_np),]
+        if not path.exists('tmp'):
+            run_command(['mkdir', 'tmp'])
+        for p, obj in to_save:
+            dump(obj, open(p, 'wb'))
 
-        print('Loading features')
-        features, local_labels = make_dataset('input/traintest', protein_list, test_go_set)
-        train_ids, train_x, train_y, test_ids, test_x, test_y = split_train_test(
-            protein_list, features, local_labels)
+        open(base_dir+'/train_ids.txt', 'w').write('\n'.join(train_ids))
+        open(base_dir+'/test_ids.txt', 'w').write('\n'.join(test_ids))
+        
+        return True
 
-    annot_model, stats = makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict=params_dict)
+def train_node(params, features, max_proteins=60000):
+    node = params['node']
+    params_dict = params['params_dict']
+
+    traintest_path = node['traintest_path']
+    base_dir = traintest_path.replace('.parquet', 
+        '_test'+str(params['test_perc'])+"_features-"+'-'.join(features))
+    
+    train_x_name = base_dir + '/train_x.obj'
+    train_y_name = base_dir + '/train_y.obj'
+    test_x_name = base_dir + '/test_x.obj'
+    test_y_name = base_dir + '/test_y.obj'
+
+    train_x = load(open(train_x_name, 'rb'))
+    train_y = load(open(train_y_name, 'rb'))
+    test_x = load(open(test_x_name, 'rb'))
+    test_y = load(open(test_y_name, 'rb'))
+
+    annot_model, stats = makeMultiClassifierModel(train_x, train_y, test_x, test_y, 
+        params_dict)
     #print(params['cluster_name'], stats)
 
     return annot_model, stats
@@ -251,7 +318,7 @@ def predict_with_model(nodes, experiment_dir):
 
 class MetaheuristicTest():
 
-    def __init__(self, params) -> None:
+    def __init__(self, name, params, features, pop) -> None:
         self.nodes = params
 
         '''self.problem_constrained = {
@@ -262,12 +329,26 @@ class MetaheuristicTest():
             "log_file": "result.log",         # Default value = "mealpy.log"
         }'''
 
-        self.heuristic_model = RandomSearchMetaheuristic(100, 
-            PARAM_TRANSLATOR.upper_bounds, PARAM_TRANSLATOR.lower_bounds,
-            n_jobs=7)
+        params_dict = {k: {k2: v2 for k2, v2 in v.items()} for k, v in param_bounds.items()}
+        plm_base_params = params_dict['plm']
+        for feature_name in features:
+            feature_len = plm_sizes[feature_name]
+            params_dict[feature_name] = {
+                "l1_dim": [int(plm_base_params["l1_dim"][0]*feature_len), 
+                           int(plm_base_params["l1_dim"][1]*feature_len)],
+                "l2_dim": [int(plm_base_params["l2_dim"][0]*feature_len), 
+                           int(plm_base_params["l2_dim"][1]*feature_len)],
+                "dropout_rate": plm_base_params['dropout_rate'],
+                "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
+            }
+        del params_dict['plm']
+        self.features = features
+        self.new_param_translator = ProblemTranslator(params_dict)
+        self.heuristic_model = RandomSearchMetaheuristic(name, self.new_param_translator, pop,
+            n_jobs=3)
     
     def objective_func(self, solution):
-        new_params_dict = PARAM_TRANSLATOR.decode(solution)
+        new_params_dict = self.new_param_translator.decode(solution)
         
         for node in self.nodes:
             node['params_dict'] = new_params_dict
@@ -275,42 +356,18 @@ class MetaheuristicTest():
         if n_procs > len(self.nodes):
             n_procs = len(self.nodes)'''
 
-        roc_aucs = [train_node(node)[1]['ROC AUC'] for node in self.nodes]
-        print(np.mean(roc_aucs), np.std(roc_aucs), min(roc_aucs))
+        roc_aucs = [train_node(node, self.features)[1]['ROC AUC'] for node in self.nodes]
+        print(roc_aucs, file=sys.stderr)
         mean_training_roc = np.mean(roc_aucs)
         min_roc_auc = min(roc_aucs)
         std = np.std(roc_aucs)
         return mean_training_roc, min_roc_auc, std
 
     def test(self):
-        best_solution, best_fitness, report = self.heuristic_model.run_tests(self.objective_func)
-        solution_dict = PARAM_TRANSLATOR.decode(best_solution)
+        best_solution, best_fitness, report = self.heuristic_model.run_tests(
+            self.objective_func, gens=2)
+        solution_dict = self.new_param_translator.decode(best_solution)
         print(json.dumps(solution_dict, indent=4))
         print(best_fitness)
 
         return solution_dict, best_fitness, report
-
-def optimize_params_for_classification(percentiles, go_graph, go_annotations, n_ids,
-        min_annotations, experiment_dir):
-    
-    go_lists = cluster_go_by_levels_and_freq(go_annotations, n_ids, 
-        percentiles, go_graph, min_annotations, True)
-    
-    clusters = list(go_lists.items())
-    params = []
-    for cluster_name, cluster_gos in clusters:
-        print('Creating params for', cluster_name, 'with', len(cluster_gos), 'targets')
-        params.append({
-            'cluster_name': cluster_name,
-            'test_go_set': cluster_gos,
-            'go_annotations': go_annotations
-        })
-    
-    with Pool(config['parsing_processes']) as pool:
-        _ = pool.map(prepare_data, params)
-    
-    meta = MetaheuristicTest(params)
-    solution_dict, fitness, report = meta.test()
-    meta_report_path = experiment_dir + '.optimization.txt'
-    open(meta_report_path, 'w').write(report)
-    return solution_dict

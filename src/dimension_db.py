@@ -29,9 +29,9 @@ class DimensionDB:
         print('Creating file names')
         self.release_dir        = path.join(dimension_db_releases_dir, 'release_' + dimension_db_release_n)
         self.release_url        = protein_dimension_db_url + '/release_'+ dimension_db_release_n
-        self.plm_names          = ['ankh_base', 'ankh_large', 
-                                   'esm2_t6', 'esm2_t12', 'esm2_t30', 'esm2_t33', 'esm2_t36', 
-                                   'prottrans']
+        self.plm_names          = ['esm2_t6', 'esm2_t12', 'esm2_t30', 
+                                   'ankh_base', 'prottrans', 'esm2_t33', 'ankh_large', 
+                                   'esm2_t36']
         self.emb_extension      = '.npy.gz'
         self.new_emb_extension  = '.parquet'
         self.taxa_profile_names = ['taxa_profile_128', 'taxa_profile_256']
@@ -55,7 +55,8 @@ class DimensionDB:
         self.ids_uniprot_path = path.join(self.release_dir, 'ids.txt')
         self.mf_gos_path = path.join(self.release_dir, 'go.experimental.mf.tsv.gz')
         self.go_basic_path = path.join(self.release_dir, 'go-basic.obo')
-        self.other_files = [self.fasta_path, self.taxids_path, self.ids_uniprot_path, self.mf_gos_path, self.go_basic_path]
+        self.other_files = [self.fasta_path, self.taxids_path, self.ids_uniprot_path, 
+                            self.mf_gos_path, self.go_basic_path]
 
         if new_downloads:
             print('Checking for downloads')

@@ -5,6 +5,7 @@ __pycache__/
 .fuse_hidden*
 # C extensions
 *.so
+up.sh
 
 # Distribution / packaging
 .Python
