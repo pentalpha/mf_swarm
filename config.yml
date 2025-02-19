@@ -2,5 +2,5 @@ dimension_db_dir: ~/data/dimension_db
 datasets_dir: ~/data/mf_datasets
 release_n: 1
 min_proteins_per_mf: 30
-val_perc: 0.1
-test_perc: 0.25
+val_perc: 0.15
+test_perc: 0.3

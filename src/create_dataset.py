@@ -185,7 +185,7 @@ class Dataset:
 
         clusters = {}
 
-        for l in [3, 4]:
+        '''for l in [3, 4]:
             gos = levels[l]
             gos.sort(key=lambda g: go_freqs[g], reverse=True)
             print(len(gos), 'GO IDs at level', l)
@@ -194,9 +194,9 @@ class Dataset:
             max_freq = go_freqs[best_gos[0]]
             cluster_name = ('Level-'+str(l)+'_Freq-'+str(last_min_freq)+'-'
                     +str(max_freq)+'_N-'+str(len(best_gos)))
-            clusters[cluster_name] = best_gos
+            clusters[cluster_name] = best_gos'''
         
-        for l in [6, 7]:
+        for l in [5, 6, 7]:
             gos = levels[l]
             gos.sort(key=lambda g: go_freqs[g])
             print(len(gos), 'GO IDs at level', l)
@@ -206,7 +206,7 @@ class Dataset:
                 worst_gos = gos[:index]
             else:
                 worst_gos = gos[:8]'''
-            worst_gos = gos[:75]
+            worst_gos = gos[:50]
             last_min_freq = go_freqs[worst_gos[0]]
             max_freq = go_freqs[worst_gos[-1]]
             cluster_name = ('Level-'+str(l)+'_Freq-'+str(last_min_freq)+'-'

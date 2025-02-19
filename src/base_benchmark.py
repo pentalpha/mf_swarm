@@ -6,11 +6,12 @@ import sys
 print('New thread', file=sys.stderr)
 
 from tqdm import tqdm
+import polars as pl
 
 from metaheuristics import param_bounds
 from create_dataset import Dataset, find_latest_dataset
 from dimension_db import DimensionDB
-from node_factory import MetaheuristicTest, sample_train_test
+from node_factory import MetaheuristicTest, sample_train_test, train_node
 from util_base import run_command, plm_sizes
 
 def run_test(exp):
@@ -31,12 +32,13 @@ def run_test(exp):
         sample_train_test(node['traintest_path'], features, test_perc)
         params_list.append({
                 'test_perc': test_perc,
-                'node': node
+                'node': node,
+                'node_name': node_name
             }
         )
 
     print('Preparing', exp['name'])
-    meta_test = MetaheuristicTest(name, params_list, features, 12)
+    meta_test = MetaheuristicTest(name, params_list, features, 11)
 
     print('Running', exp['name'])
     solution_dict, fitness, report = meta_test.test()
@@ -44,6 +46,9 @@ def run_test(exp):
     meta_report_path = local_dir + '/optimization.txt'
     open(meta_report_path, 'w').write(report)
     json.dump(solution_dict, open(local_dir + '/solution.json', 'w'), indent=4)
+
+    
+
     return solution_dict
 
 if __name__ == '__main__':

@@ -8,6 +8,7 @@ import numpy as np
 from pickle import load, dump
 
 os.environ["KERAS_BACKEND"] = "tensorflow"
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 import keras
 from keras.callbacks import EarlyStopping, ModelCheckpoint, LearningRateScheduler
@@ -96,18 +97,29 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
         end_dim = feature_params['l2_dim']
         leakyrelu_1_alpha = feature_params['leakyrelu_1_alpha']
         dropout_rate = feature_params['dropout_rate']
+        #print('1')
         input_start = Input(shape=(feature_vec.shape[1],))
 
+        #print('2')
         input_network = Dense(start_dim, name=feature_name+'_dense_1')(input_start)
+        #print('3')
         input_network = BatchNormalization(name=feature_name+'_batchnorm_1')(input_network)
+        #print('4')
         input_network = LeakyReLU(negative_slope=leakyrelu_1_alpha, name=feature_name+'_leakyrelu_1')(input_network)
+        
+        #print('4.5')
         input_network = Dropout(dropout_rate, name=feature_name+'_dropout_1')(input_network)
+        #print('5')
         input_network = Dense(end_dim, name=feature_name+'_dense_2')(input_network)
+        #print('6')
 
         keras_inputs.append(input_start)
+        #print('7')
         keras_input_networks.append(input_network)
+        #print('8')
     
     final_params = params_dict['final']
+    #print('9')
     final_dim = final_params['final_dim']
     dropout_rate = final_params['final_dim']
     patience = final_params['patience']
@@ -115,15 +127,17 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     learning_rate = final_params['learning_rate']
     batch_size = final_params['batch_size']
 
-    # Concatenate the networks
+    #print("Concatenate the networks")
     combined = Concatenate()(keras_input_networks)
     #combined = LeakyReLU(alpha=0.1, name='combined_leakyrelu_1')(combined)
+    #print("BatchNormalization")
     combined = BatchNormalization(name = 'combined_batchnorm_1')(combined)
     combined = Dense(final_dim, name='combined_dense_1', activation='relu')(combined)
+    #print("Dense")
     output_1 = Dense(train_y.shape[1], activation='sigmoid', name='final_output_123')(combined)
 
     # Create the model
-    #print('Creating Modle')
+    #print('Creating Model')
     model = Model(inputs=keras_inputs,
         outputs=output_1)
 
@@ -153,8 +167,9 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
         validation_data=(x_test_vec, test_y),
         epochs=epochs, batch_size=batch_size,
         callbacks=[lr_callback, es],
-        verbose=0)
+        verbose=1)
     
+    #print('Testing')
     y_pred = model.predict(x_test_vec, verbose=0)
     roc_auc_score = metrics.roc_auc_score(test_y, y_pred)
     acc = np.mean(keras.metrics.binary_accuracy(test_y, y_pred).numpy())
@@ -253,6 +268,7 @@ def train_node(params, features, max_proteins=60000):
     traintest_path = node['traintest_path']
     base_dir = traintest_path.replace('.parquet', 
         '_test'+str(params['test_perc'])+"_features-"+'-'.join(features))
+    #print('loading', base_dir)
     
     train_x_name = base_dir + '/train_x.obj'
     train_y_name = base_dir + '/train_y.obj'
@@ -348,6 +364,7 @@ class MetaheuristicTest():
             n_jobs=3)
     
     def objective_func(self, solution):
+        #print('objective_func', file=sys.stderr)
         new_params_dict = self.new_param_translator.decode(solution)
         
         for node in self.nodes:
@@ -356,18 +373,50 @@ class MetaheuristicTest():
         if n_procs > len(self.nodes):
             n_procs = len(self.nodes)'''
 
+        #print('getting roc_auc s', file=sys.stderr)
         roc_aucs = [train_node(node, self.features)[1]['ROC AUC'] for node in self.nodes]
-        print(roc_aucs, file=sys.stderr)
+        #print(roc_aucs, file=sys.stderr)
         mean_training_roc = np.mean(roc_aucs)
         min_roc_auc = min(roc_aucs)
         std = np.std(roc_aucs)
+        #print('objective_func finish', file=sys.stderr)
         return mean_training_roc, min_roc_auc, std
 
     def test(self):
         best_solution, best_fitness, report = self.heuristic_model.run_tests(
-            self.objective_func, gens=2)
+            self.objective_func, gens=2, top_perc=0.5)
         solution_dict = self.new_param_translator.decode(best_solution)
-        print(json.dumps(solution_dict, indent=4))
+        #print(json.dumps(solution_dict, indent=4))
         print(best_fitness)
 
-        return solution_dict, best_fitness, report
+        results = {}
+        rocs = []
+        for node in self.nodes:
+            node['params_dict'] = solution_dict
+            annot_model, stats = train_node(node, self.features)
+            print('Validating')
+            val_path = node['node']['val_path']
+            val_df = pl.read_parquet(val_path)
+            val_x_np = []
+            for col in self.features:
+                val_x_np.append(val_df[col].to_numpy())
+            val_df_y_np = val_df['labels'].to_numpy()
+            val_y_pred = annot_model.predict(val_x_np, verbose=0)
+            roc_auc_score = metrics.roc_auc_score(val_df_y_np, val_y_pred)
+            acc = np.mean(keras.metrics.binary_accuracy(val_df_y_np, val_y_pred).numpy())
+            print(roc_auc_score)
+            results[node['node_name']] = {
+                'test': stats,
+                'validation': {
+                    'roc_auc_score': float(roc_auc_score),
+                    'acc': float(acc),
+                    'val_x': len(val_df)
+                }
+            }
+            if roc_auc_score == roc_auc_score:
+                rocs.append(roc_auc_score)
+        results['roc_auc_mean'] = np.mean(rocs)
+        results['roc_auc_min'] = min(rocs)
+        results['params_dict'] = solution_dict
+
+        return results, best_fitness, report
