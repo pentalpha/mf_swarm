@@ -167,14 +167,39 @@ class DimensionDB:
         print(len(frequent_go_ids), 'frequent GO IDs from uniprot proteins in', self.mf_gos_path)
         
         all_annotations = {k: v.intersection(frequent_go_ids) for k, v in all_annotations.items()}
-        all_annotations = {k: sorted(v) for k, v in all_annotations.items() if len(v) > 0}
+        all_annotations = {k: v for k, v in all_annotations.items() if len(v) > 0}
         annotated_proteins = [k for k in self.ids if k in all_annotations]
         go_freqs_filtered = {g: c for g, c in go_counts.items() if g in frequent_go_ids}
         print(len(annotated_proteins), 'proteins annotated to frequent GO IDs')
 
         return annotated_proteins, all_annotations, go_freqs_filtered
     
-    def sep_validation(self, proteins, val_perc):
+    def split_by_taxid(proteins_by_taxid, val_perc, min_proteins_in_taxid):
+        val_set = set()
+        traintest_set = set()
+
+        unfrequent_taxid_proteins = set()
+
+        #print('Creating random validation splits by taxon id')
+        for taxid, proteins in proteins_by_taxid.items():
+            if len(proteins) < min_proteins_in_taxid:
+                unfrequent_taxid_proteins.update(proteins)
+            else:
+                #val_n = int(round(len(proteins)*val_perc))
+                ids_train, ids_validation = train_test_split(
+                    proteins, test_size = val_perc)
+                val_set.update(ids_validation)
+                traintest_set.update(ids_train)
+        
+        #print('Splitting', len(unfrequent_taxid_proteins), 'proteins in unfrequent taxa')
+        ids_train, ids_validation = train_test_split(list(unfrequent_taxid_proteins), 
+            test_size = val_perc)
+        val_set.update(ids_validation)
+        traintest_set.update(ids_train)
+
+        return traintest_set, val_set
+
+    def sep_validation(self, proteins, val_perc, annotations):
         print('Validation percent:', val_perc)
         print('Grouping', len(proteins) , 'proteins by species')
         proteins_by_taxid = {taxid: [] for taxid in set(self.taxids)}
@@ -184,27 +209,43 @@ class DimensionDB:
                 proteins_by_taxid[self.taxids[i]].append(self.ids[i])
         min_proteins_in_taxid = int(round(100 / (val_perc*100)))
         print('Min proteins for taxid specific sampling:', min_proteins_in_taxid)
-        val_set = set()
-        traintest_set = set()
-
-        unfrequent_taxid_proteins = set()
-
-        print('Creating random validation splits by taxon id')
-        for taxid, proteins in tqdm(proteins_by_taxid.items()):
-            if len(proteins) < min_proteins_in_taxid:
-                unfrequent_taxid_proteins.update(proteins)
-            else:
-                #val_n = int(round(len(proteins)*val_perc))
-                ids_train, ids_validation = train_test_split(
-                    proteins, test_size = val_perc, random_state=1337)
-                val_set.update(ids_validation)
-                traintest_set.update(ids_train)
         
-        print('Splitting', len(unfrequent_taxid_proteins), 'proteins in unfrequent taxa')
-        ids_train, ids_validation = train_test_split(list(unfrequent_taxid_proteins), 
-            test_size = val_perc, random_state=1337)
-        val_set.update(ids_validation)
-        traintest_set.update(ids_train)
+        print('Indexing proteins by go id')
+        ann_by_go = {}
+        for protid, prot_ann in tqdm(annotations.items()):
+            for goid in prot_ann:
+                if not goid in ann_by_go:
+                    ann_by_go[goid] = set([protid])
+                else:
+                    ann_by_go[goid].add(protid)
+
+        print('Trying different splits')
+        splits = []
+        min_so_far = 300
+        for _ in tqdm(range(600)):
+            traintest_set, val_set = DimensionDB.split_by_taxid(proteins_by_taxid, val_perc, 
+                                                                min_proteins_in_taxid)
+            faulty_go_ids = set()
+
+            for goid, prot_ann in ann_by_go.items():
+                local_traintest = prot_ann.intersection(traintest_set)
+                local_val = prot_ann.intersection(val_set)
+                if len(local_traintest) <= 3:
+                    #print(goid, 'has zero samples in traintest set')
+                    faulty_go_ids.add(goid)
+                elif len(local_val) <= 3:
+                    #print(goid, 'has zero samples in validation set')
+                    faulty_go_ids.add(goid)
+            if len(faulty_go_ids) < min_so_far:
+                min_so_far = len(faulty_go_ids)
+                print('Split with', len(faulty_go_ids), 'faulty GO ids')
+            splits.append({'faulty_go_ids': faulty_go_ids, 
+                           'traintest_set': traintest_set, 'val_set': val_set})
+        
+        splits.sort(key=lambda s: len(s['faulty_go_ids']))
+        best_split = splits[0]
+        traintest_set = best_split['traintest_set']
+        val_set = best_split['val_set']
 
         val_sorted = []
         traintest_sorted = []
@@ -216,7 +257,7 @@ class DimensionDB:
         
         print('Split:', len(traintest_sorted), len(val_sorted))
         
-        return traintest_sorted, val_sorted
+        return traintest_sorted, val_sorted, faulty_go_ids
     
     def get_proteins_set(self, min_proteins_per_mf: int, val_perc: float):
         proteins_set_dir = self.validation_splits_dir + '/min_prot' + str(min_proteins_per_mf) + '_val' + str(val_perc)
@@ -227,7 +268,17 @@ class DimensionDB:
         paths = [proteins_set_dir, validation_path, traintest_path, annotations_path, go_freqs_path]
         if not all([path.exists(x) for x in paths]):
             proteins, annotations, go_freqs = self.list_usable_proteins(min_proteins_per_mf)
-            traintest, validation = self.sep_validation(proteins, val_perc)
+            traintest, validation, faulty_go_ids = self.sep_validation(proteins, val_perc, annotations)
+            for goid in faulty_go_ids:
+                del go_freqs[goid]
+            print('Removing faulty GO ids')
+            for prot in annotations.keys():
+                to_remove = annotations[prot].intersection(faulty_go_ids)
+                if len(to_remove) > 0:
+                    for t in to_remove:
+                        annotations[prot].remove(t)
+            annotations = {k: list(v) for k, v in annotations.items()}
+            print('Saving split')
             run_command(['mkdir -p', proteins_set_dir])
             open(validation_path, 'w').write('\n'.join(validation))
             open(traintest_path, 'w').write('\n'.join(traintest))

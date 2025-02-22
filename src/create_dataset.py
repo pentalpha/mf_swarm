@@ -4,6 +4,7 @@ from glob import glob
 import json
 from math import floor
 from os import mkdir, path
+import random
 import sys
 import gzip
 from tqdm import tqdm
@@ -72,6 +73,121 @@ class Dataset:
         self.go_ids = open(path.join(dataset_path, 'go_ids.txt'), 'r').read().split('\n')
         self.val_perc = self.dataset_params['val_perc']
     
+    def goids_to_cluster(self, cluster_name, cluster_gos, filtered_ann, 
+                         parquet_loader, traintest_set, val_set, tmp_dir,
+                         dimension_db,
+                         max_proteins_traintest=None):
+        print('Filtering annotation')
+        cluster_ann = {k: v.intersection(cluster_gos) for k, v in filtered_ann.items()}
+        cluster_ann = {k: v for k, v in cluster_ann.items() if len(v) > 0}
+        
+        cluster_ids = [p for p in dimension_db.ids if p in cluster_ann]
+        cluster_gos_set = set(cluster_gos)
+        print('Creating DF', cluster_name, 'with', len(cluster_ids), 'proteins')
+        traintest_ids = set(cluster_ids).intersection(traintest_set)
+        val_ids = set(cluster_ids).intersection(val_set)
+
+        if max_proteins_traintest:
+            if len(traintest_ids) > max_proteins_traintest:
+                parts_len = int(len(cluster_gos)/3)
+                first_gos = cluster_gos[:parts_len]
+                middle_gos = cluster_gos[parts_len:parts_len+parts_len]
+                print('Cluster has ', len(cluster_gos), 
+                      ' and priority portion has', len(first_gos))
+                #other_gos = cluster_gos[parts_len:]
+
+                print('Sampling proteins for least frequent classes:', first_gos)
+                less_freq_proteins = set()
+                for prot_id in list(traintest_ids):
+                    if len(cluster_ann[prot_id].intersection(first_gos)) > 0:
+                        traintest_ids.remove(prot_id)
+                        less_freq_proteins.add(prot_id)
+                
+                remaining_n = max_proteins_traintest - len(less_freq_proteins)
+                print(len(less_freq_proteins), 'less_freq_proteins')
+                print('collecting more', remaining_n, 'proteins')
+
+                print('Sampling proteins for middle frequent classes:', middle_gos)
+                middle_freq_proteins = set()
+                for prot_id in list(traintest_ids):
+                    if len(cluster_ann[prot_id].intersection(middle_gos)) > 0:
+                        #traintest_ids.remove(prot_id)
+                        middle_freq_proteins.add(prot_id)
+                
+                for_middle = int(remaining_n/2)
+                print(len(middle_freq_proteins), 'middle_freq_proteins')
+                print(for_middle, 'for_middle')
+                if for_middle < len(middle_freq_proteins):
+                    middle_ids = random.sample(list(middle_freq_proteins), for_middle)
+                else:
+                    middle_ids = middle_freq_proteins
+                traintest_ids = traintest_ids.difference(middle_ids)
+                
+                print('combining lists')
+                remaining_ids = random.sample(list(traintest_ids), 
+                    max_proteins_traintest - len(less_freq_proteins) - len(middle_ids))
+                traintest_ids = list(less_freq_proteins) + list(middle_ids) + remaining_ids
+                random.shuffle(traintest_ids)
+
+                assert len(traintest_ids) == max_proteins_traintest, [len(l) for l in [less_freq_proteins, middle_ids, remaining_ids]]
+        #quit(1)
+        print('Counting proteins at each class')
+        ann_by_go = {goid: {'traintest': [], 'val': []} for goid in cluster_gos_set}
+        for l, key in [(traintest_ids, 'traintest'), (val_ids, 'val')]:
+            for protein_id in tqdm(l):
+                prot_ann = cluster_ann[protein_id]
+                for goid in prot_ann.intersection(cluster_gos_set):
+                    ann_by_go[goid][key].append(protein_id)
+        
+        to_remove = []
+        for goid in cluster_gos:
+            go_traintests = ann_by_go[goid]['traintest']
+            go_val = ann_by_go[goid]['val']
+            print(goid, len(go_traintests), len(go_val))
+            if len(go_traintests) < 3:
+                print(goid, 'has zero samples in traintest set')
+                to_remove.append(goid)
+            elif len(go_val) < 3:
+                print(goid, 'has zero samples in validation set')
+                to_remove.append(goid)
+        
+        print('Loading parquet')
+
+        cluster_df = parquet_loader.load_vectors_by_ids(
+            list(traintest_ids) + list(val_ids), 
+            self.datasets_to_load,
+            remove_na=True)
+        loaded_ids = cluster_df['id'].to_list()
+        print('Creating labels for dataset df')
+        labels, cluster_go_proper_order = create_go_labels(loaded_ids, cluster_ann)
+        cluster_df = cluster_df.with_columns(
+            labels=labels
+        )
+        print(len(cluster_df), 'proteins in cluster df')
+        traintest_df = cluster_df.filter(pl.col('id').is_in(set(traintest_ids)))
+        val_df = cluster_df.filter(pl.col('id').is_in(val_set))
+        print(len(traintest_df), 'proteins in cluster traintest df')
+        print(len(val_df), 'proteins in cluster val df')
+        #cluster_df['labels'] = labels_np
+
+        print('Saving parquet to tmp')
+        traintest_df_path = tmp_dir + '/traintest_' + self.dataset_name + '-' + cluster_name + '.parquet'
+        val_df_path = tmp_dir + '/val_' + self.dataset_name + '-' + cluster_name + '.parquet'
+        traintest_df.write_parquet(traintest_df_path)
+        val_df.write_parquet(val_df_path)
+        del traintest_df
+        del val_df
+        del cluster_df
+
+        cluster = {
+            'id': loaded_ids,
+            'go': cluster_go_proper_order,
+            'traintest_path': traintest_df_path,
+            'val_path': val_df_path
+        }
+        
+        return cluster
+
     def create_new_dataset(self, dimension_db: DimensionDB, min_proteins_per_mf: int, 
             dataset_type: str, val_perc: float):
         tmp_dir = path.expanduser('~/tmp')
@@ -91,61 +207,21 @@ class Dataset:
             'val_perc': val_perc}
         traintest_set, val_set, filtered_ann, go_freqs = dimension_db.get_proteins_set(min_proteins_per_mf, val_perc)
 
+        max_proteins_traintest = None
         if dataset_type == 'base_benchmark':
             go_clusters = Dataset.base_benchmark_goids_clustering(dimension_db, go_freqs)
             self.datasets_to_load = dimension_db.plm_names
+            max_proteins_traintest = 4500
         self.dataset_params['datasets_to_load'] = self.datasets_to_load
 
         self.go_clusters = {}
         parquet_loader = VectorLoader(dimension_db.release_dir)
         print('Making datasets for clusters')
+
         for cluster_name, cluster_gos in tqdm(go_clusters.items(), total = len(go_clusters)):
-            print('Filtering annotation')
-            cluster_ann = {k: v.intersection(cluster_gos) for k, v in filtered_ann.items()}
-            cluster_ann = {k: v for k, v in cluster_ann.items() if len(v) > 0}
-            
-            cluster_ids = [p for p in dimension_db.ids if p in cluster_ann]
-            print('Creating DF', cluster_name, 'with', len(cluster_ids), 'proteins')
-            cluster_df = parquet_loader.load_vectors_by_ids(cluster_ids, self.datasets_to_load,
-                                                        remove_na=True)
-            
-            print('Deleting IDs who could not be loaded')
-            loaded_ids = cluster_df['id'].to_list()
-            loaded_ids_set = set(loaded_ids)
-            could_not_be_loaded = 0
-            for x in cluster_ids:
-                if not x in loaded_ids_set:
-                    del cluster_ann[x]
-                    could_not_be_loaded += 1
-            assert could_not_be_loaded == 0
-            
-            print('Creating labels for dataset df')
-            labels, cluster_go_proper_order = create_go_labels(loaded_ids, cluster_ann)
-            cluster_df = cluster_df.with_columns(
-                labels=labels
-            )
-            print(len(cluster_df), 'proteins in cluster df')
-            traintest_df = cluster_df.filter(pl.col('id').is_in(traintest_set))
-            val_df = cluster_df.filter(pl.col('id').is_in(val_set))
-            print(len(traintest_df), 'proteins in cluster traintest df')
-            print(len(val_df), 'proteins in cluster val df')
-            #cluster_df['labels'] = labels_np
-
-            print('Saving parquet to tmp')
-            traintest_df_path = tmp_dir + '/traintest_' + self.dataset_name + '-' + cluster_name + '.parquet'
-            val_df_path = tmp_dir + '/val_' + self.dataset_name + '-' + cluster_name + '.parquet'
-            traintest_df.write_parquet(traintest_df_path)
-            val_df.write_parquet(val_df_path)
-            del traintest_df
-            del val_df
-            del cluster_df
-
-            self.go_clusters[cluster_name] = {
-                'id': loaded_ids,
-                'go': cluster_go_proper_order,
-                'traintest_path': traintest_df_path,
-                'val_path': val_df_path
-            }
+            self.go_clusters[cluster_name] = self.goids_to_cluster(cluster_name, cluster_gos, filtered_ann, 
+                parquet_loader, traintest_set, val_set, tmp_dir, dimension_db, 
+                max_proteins_traintest=max_proteins_traintest)
 
         for clustername in self.go_clusters.keys():
             print(clustername, 'cluster created')
@@ -157,14 +233,28 @@ class Dataset:
         print(len(self.ids), 'proteins')
         print(len(self.go_ids), 'go ids')
 
-    def base_benchmark_goids_clustering(dimension_db, go_freqs, top_worst_perc=35):
+    def base_benchmark_goids_clustering(dimension_db, go_freqs, go_section_len=24):
         go_graph = obonet.read_obo(dimension_db.go_basic_path)
-        root = 'GO:0003674'
-        go_levels_2 = {}
-        go_n_annotations = {}
+        #root = 'GO:0003674'
+        #go_levels_2 = {}
+        #go_n_annotations = {}
         all_goids = list(go_freqs.keys())
         valid_goids = [x for x in all_goids if x in go_graph]
-        for goid in tqdm(valid_goids):
+        valid_goids.sort(key=lambda goid: go_freqs[goid])
+
+        worst_gos = valid_goids[:go_section_len]
+        best = valid_goids[-go_section_len:]
+        middle = int(len(valid_goids)/2)
+        mid_len = int((go_section_len/2))
+        mid_start = middle-mid_len
+        middle_gos = valid_goids[mid_start:mid_start+go_section_len]
+
+        cluster_goids = worst_gos + middle_gos + best
+        cluster_name = 'WORST_MID_BEST_'+str(go_section_len)+'-N'+str(len(cluster_goids))
+
+        clusters = {cluster_name: cluster_goids}
+
+        '''for goid in tqdm(valid_goids):
             n_annots = go_freqs[goid]
             
             simple_paths = nx.all_simple_paths(go_graph, source=goid, target=root)
@@ -184,34 +274,18 @@ class Dataset:
             levels[level].append(goid)
 
         clusters = {}
-
-        '''for l in [3, 4]:
-            gos = levels[l]
-            gos.sort(key=lambda g: go_freqs[g], reverse=True)
-            print(len(gos), 'GO IDs at level', l)
-            best_gos = gos[:8]
-            last_min_freq = go_freqs[best_gos[-1]]
-            max_freq = go_freqs[best_gos[0]]
-            cluster_name = ('Level-'+str(l)+'_Freq-'+str(last_min_freq)+'-'
-                    +str(max_freq)+'_N-'+str(len(best_gos)))
-            clusters[cluster_name] = best_gos'''
         
         for l in [5, 6, 7]:
             gos = levels[l]
             gos.sort(key=lambda g: go_freqs[g])
             print(len(gos), 'GO IDs at level', l)
-            '''if not l in [1, '1']:
-                #print('not level 1')
-                index = int(len(gos)*(top_worst_perc/100))
-                worst_gos = gos[:index]
-            else:
-                worst_gos = gos[:8]'''
+            
             worst_gos = gos[:50]
             last_min_freq = go_freqs[worst_gos[0]]
             max_freq = go_freqs[worst_gos[-1]]
             cluster_name = ('Level-'+str(l)+'_Freq-'+str(last_min_freq)+'-'
                     +str(max_freq)+'_N-'+str(len(worst_gos)))
-            clusters[cluster_name] = worst_gos
+            clusters[cluster_name] = worst_gos'''
         
         return clusters
     

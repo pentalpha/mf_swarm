@@ -167,7 +167,7 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
         validation_data=(x_test_vec, test_y),
         epochs=epochs, batch_size=batch_size,
         callbacks=[lr_callback, es],
-        verbose=1)
+        verbose=0)
     
     #print('Testing')
     y_pred = model.predict(x_test_vec, verbose=0)
@@ -332,6 +332,23 @@ def predict_with_model(nodes, experiment_dir):
 
     return big_table_path
 
+def create_params_for_features(features):
+    params_dict = {k: {k2: v2 for k2, v2 in v.items()} for k, v in param_bounds.items()}
+    plm_base_params = params_dict['plm']
+    for feature_name in features:
+        feature_len = plm_sizes[feature_name]
+        params_dict[feature_name] = {
+            "l1_dim": [int(plm_base_params["l1_dim"][0]*feature_len), 
+                        int(plm_base_params["l1_dim"][1]*feature_len)],
+            "l2_dim": [int(plm_base_params["l2_dim"][0]*feature_len), 
+                        int(plm_base_params["l2_dim"][1]*feature_len)],
+            "dropout_rate": plm_base_params['dropout_rate'],
+            "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
+        }
+    del params_dict['plm']
+
+    return params_dict
+
 class MetaheuristicTest():
 
     def __init__(self, name, params, features, pop) -> None:
@@ -345,19 +362,7 @@ class MetaheuristicTest():
             "log_file": "result.log",         # Default value = "mealpy.log"
         }'''
 
-        params_dict = {k: {k2: v2 for k2, v2 in v.items()} for k, v in param_bounds.items()}
-        plm_base_params = params_dict['plm']
-        for feature_name in features:
-            feature_len = plm_sizes[feature_name]
-            params_dict[feature_name] = {
-                "l1_dim": [int(plm_base_params["l1_dim"][0]*feature_len), 
-                           int(plm_base_params["l1_dim"][1]*feature_len)],
-                "l2_dim": [int(plm_base_params["l2_dim"][0]*feature_len), 
-                           int(plm_base_params["l2_dim"][1]*feature_len)],
-                "dropout_rate": plm_base_params['dropout_rate'],
-                "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
-            }
-        del params_dict['plm']
+        params_dict = create_params_for_features(features)
         self.features = features
         self.new_param_translator = ProblemTranslator(params_dict)
         self.heuristic_model = RandomSearchMetaheuristic(name, self.new_param_translator, pop,

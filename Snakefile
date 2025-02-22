@@ -17,18 +17,23 @@ parquet_search_query = dimension_db_dir+'/release_'+str(release_n)+'/emb.*.parqu
 print(parquet_search_query)
 parquets = glob(parquet_search_query)
 print('Parquets:', parquets)
+
+model_to_test = 'esm2_t6'
+
 rule run_first_benchmark:
     input:
         parquets + ["src/base_benchmark.py"]
     output:
-        experiments_dir+'/base_benchmark/results.json'
+        experiments_dir+'/'+model_to_test+'.json'
     shell:
-        "conda run --live-stream -n mf_swarm_base"
+        "rm -f src/__pycache__/*"
+        " && conda run --live-stream -n mf_swarm_base"
             " python src/base_benchmark.py "+dimension_db_dir
             +" "+str(release_n)
             +" "+datasets_dir
             +" "+str(min_proteins_per_mf)
             +" "+str(val_perc)
             +" "+str(real_test_perc)
-            +" "+experiments_dir+'/base_benchmark'
+            +" "+experiments_dir
+            +" "+model_to_test
         

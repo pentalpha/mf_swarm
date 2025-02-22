@@ -51,6 +51,13 @@ class ProblemTranslator:
     '''def to_bounds(self):
         return FloatVar(lb=self.lower_bounds, ub=self.upper_bounds)'''
     
+    def to_dict(self):
+        return {
+            'params_list': self.params_list,
+            'upper_bounds': self.upper_bounds,
+            'lower_bounds': self.lower_bounds,
+        }
+
     def decode(self, vec):
         new_param_dict = {}
         for first, second in self.params_list:
@@ -87,7 +94,7 @@ class ProblemTranslator:
 
 class RandomSearchMetaheuristic:
     def __init__(self, test_name, param_translator: ProblemTranslator, 
-                 pop_size, n_jobs = 24) -> None:
+                 pop_size, n_jobs = 24, metric_name=None) -> None:
         self.param_translator = param_translator
         upper_bounds = self.param_translator.upper_bounds
         lower_bounds = self.param_translator.lower_bounds
@@ -96,6 +103,7 @@ class RandomSearchMetaheuristic:
         self.test_name = test_name
         self.pop_size = pop_size
         self.n_jobs = n_jobs
+        self.to_optimize = metric_name
         random.seed(1337)
         self.generate_population()
     
@@ -134,13 +142,15 @@ class RandomSearchMetaheuristic:
     
     def sort_solutions(solutions):
         #First: Mean fitness, Second: Min fitness, Third: smaller standard deviation
-        solutions.sort(key = lambda tp: (round(tp[1][0], 3), round(tp[1][1], 3), -tp[1][2]))
+        #solutions.sort(key = lambda tp: (round(tp[1][0], 3), round(tp[1][1], 3), -tp[1][2]))
+        solutions.sort(key = lambda tp: tp[1])
     
-    def run_tests(self, objective_func, gens=4, top_perc = 0.33):
+    def run_tests(self, objective_func, gens=4, top_perc = 0.33, log_dir="/tmp/"):
         all_solutions = []
         report = []
 
         for gen in range(gens):
+            gen_file = log_dir + '/gen_'+str(gen)+'_population.json'
             print(self.test_name, 'gen', gen)
 
             if self.n_jobs <= 1:
@@ -149,6 +159,18 @@ class RandomSearchMetaheuristic:
                 with Pool(self.n_jobs) as pool:
                     fitness_vec = pool.map(objective_func, self.population)
             
+            log_dict = {
+                'population': []
+            }
+            for sol, m_dict in zip(self.population, fitness_vec):
+                log_dict['population'].append({
+                    'solution': sol,
+                    'metrics': m_dict
+                })
+            json.dump(log_dict, open(gen_file, 'w'), indent=4)
+
+            fitness_vec = [m_dict[self.to_optimize] for m_dict in fitness_vec]
+
             solutions_with_fitness = [(self.population[i], fitness_vec[i])
                 for i in range(self.pop_size)]
             n_top = int(self.pop_size * top_perc)
