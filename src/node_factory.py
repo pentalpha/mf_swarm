@@ -171,11 +171,39 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     
     #print('Testing')
     y_pred = model.predict(x_test_vec, verbose=0)
-    roc_auc_score = metrics.roc_auc_score(test_y, y_pred)
+    #roc_auc_score = metrics.roc_auc_score(test_y, y_pred)
+    roc_auc_score_mac = metrics.roc_auc_score(test_y, y_pred, average='macro')
+    roc_auc_score_w = metrics.roc_auc_score(test_y, y_pred, average='weighted')
     acc = np.mean(keras.metrics.binary_accuracy(test_y, y_pred).numpy())
 
-    return model, {'ROC AUC': float(roc_auc_score), 'Accuracy': float(acc), 
-        'Proteins': len(train_y) + len(test_y)}
+    y_pred_04 = (y_pred > 0.4).astype(int)
+    y_pred_05 = (y_pred > 0.5).astype(int)
+    y_pred_06 = (y_pred > 0.6).astype(int)
+    f1_score_w_04 = metrics.f1_score(test_y, y_pred_04, average='weighted')
+    f1_score_w_05 = metrics.f1_score(test_y, y_pred_05, average='weighted')
+    f1_score_w_06 = metrics.f1_score(test_y, y_pred_06, average='weighted')
+    recall_score_w_04 = metrics.recall_score(test_y, y_pred_04, average='weighted')
+    recall_score_w_05 = metrics.recall_score(test_y, y_pred_05, average='weighted')
+    recall_score_w_06 = metrics.recall_score(test_y, y_pred_06, average='weighted')
+    precision_score_w_04 = metrics.precision_score(test_y, y_pred_04, average='weighted')
+    precision_score_w_05 = metrics.precision_score(test_y, y_pred_05, average='weighted')
+    precision_score_w_06 = metrics.precision_score(test_y, y_pred_06, average='weighted')
+    test_stats = {
+        'ROC AUC': float(roc_auc_score_mac),
+        'ROC AUC W': float(roc_auc_score_w),
+        'Accuracy': float(acc), 
+        'f1_score_w_04': f1_score_w_04,
+        'f1_score_w_05': f1_score_w_05,
+        'f1_score_w_06': f1_score_w_06,
+        'recall_score_w_04': recall_score_w_04,
+        'recall_score_w_05': recall_score_w_05,
+        'recall_score_w_06': recall_score_w_06,
+        'precision_score_w_04': precision_score_w_04,
+        'precision_score_w_05': precision_score_w_05,
+        'precision_score_w_06': precision_score_w_06,
+        'Proteins': len(train_y) + len(test_y)
+    }
+    return model, test_stats
 
 def prepare_data(node_dict, test_perc, max_proteins=60000):
     basename = 'tmp/'+params['cluster_name']

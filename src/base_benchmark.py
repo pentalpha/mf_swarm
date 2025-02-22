@@ -50,17 +50,41 @@ def run_validation(node, solution_dict, features):
         val_x_np.append(val_df[col].to_numpy())
     val_df_y_np = val_df['labels'].to_numpy()
     val_y_pred = annot_model.predict(val_x_np, verbose=0)
-    roc_auc_score = metrics.roc_auc_score(val_df_y_np, val_y_pred)
     acc = np.mean(keras.metrics.binary_accuracy(val_df_y_np, val_y_pred).numpy())
-    print(roc_auc_score)
+    roc_auc_score_mac = metrics.roc_auc_score(val_df_y_np, val_y_pred, average='macro')
+    roc_auc_score_w = metrics.roc_auc_score(val_df_y_np, val_y_pred, average='weighted')
+    print(roc_auc_score_w)
+    y_pred_04 = (val_y_pred > 0.4).astype(int)
+    y_pred_05 = (val_y_pred > 0.5).astype(int)
+    y_pred_06 = (val_y_pred > 0.6).astype(int)
+    f1_score_w_04 = metrics.f1_score(val_df_y_np, y_pred_04, average='weighted')
+    f1_score_w_05 = metrics.f1_score(val_df_y_np, y_pred_05, average='weighted')
+    f1_score_w_06 = metrics.f1_score(val_df_y_np, y_pred_06, average='weighted')
+    recall_score_w_04 = metrics.recall_score(val_df_y_np, y_pred_04, average='weighted')
+    recall_score_w_05 = metrics.recall_score(val_df_y_np, y_pred_05, average='weighted')
+    recall_score_w_06 = metrics.recall_score(val_df_y_np, y_pred_06, average='weighted')
+    precision_score_w_04 = metrics.precision_score(val_df_y_np, y_pred_04, average='weighted')
+    precision_score_w_05 = metrics.precision_score(val_df_y_np, y_pred_05, average='weighted')
+    precision_score_w_06 = metrics.precision_score(val_df_y_np, y_pred_06, average='weighted')
+    
+    val_stats = {'ROC AUC': float(roc_auc_score_mac),
+        'ROC AUC W': float(roc_auc_score_w),
+        'Accuracy': float(acc), 
+        'f1_score_w_04': f1_score_w_04,
+        'f1_score_w_05': f1_score_w_05,
+        'f1_score_w_06': f1_score_w_06,
+        'recall_score_w_04': recall_score_w_04,
+        'recall_score_w_05': recall_score_w_05,
+        'recall_score_w_06': recall_score_w_06,
+        'precision_score_w_04': precision_score_w_04,
+        'precision_score_w_05': precision_score_w_05,
+        'precision_score_w_06': precision_score_w_06,
+        'val_x': len(val_df)
+    }
     results = {
-        'go_labels': go_labels,
         'test': stats,
-        'validation': {
-            'roc_auc_score': float(roc_auc_score),
-            'acc': float(acc),
-            'val_x': len(val_df)
-        }
+        'validation': val_stats,
+        'go_labels': go_labels,
     }
 
     validation_solved_df = pl.DataFrame(
@@ -100,12 +124,12 @@ def run_basebenchmark_test(exp):
     del params_dict_custom['taxa_profile']
     problem_translator = ProblemTranslator(params_dict_custom)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
-    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 8,
-        n_jobs=4, metric_name="ROC AUC")
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 80,
+        n_jobs=3, metric_name="ROC AUC W", metric_name2 = 'f1_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])
     best_solution, fitness, report = heuristic_model.run_tests(
-        runner.objective_func, gens=2, top_perc=0.5, log_dir=local_dir)
+        runner.objective_func, gens=4, top_perc=0.5, log_dir=local_dir)
     solution_dict = problem_translator.decode(best_solution)
     print('Saving', exp['name'])
     meta_report_path = local_dir + '/optimization.txt'
@@ -128,6 +152,10 @@ if __name__ == '__main__':
     test_perc    = float(sys.argv[6])
     base_benchmark_dir    = sys.argv[7]
     feature_to_test    = sys.argv[8]
+    print(sys.argv)
+
+    feature_to_test = path.basename(feature_to_test).split('.')[1]
+    print(feature_to_test)
 
     run_command(['mkdir -p', base_benchmark_dir])
 

@@ -94,7 +94,7 @@ class ProblemTranslator:
 
 class RandomSearchMetaheuristic:
     def __init__(self, test_name, param_translator: ProblemTranslator, 
-                 pop_size, n_jobs = 24, metric_name=None) -> None:
+                 pop_size, n_jobs = 24, metric_name=None, metric_name2=None) -> None:
         self.param_translator = param_translator
         upper_bounds = self.param_translator.upper_bounds
         lower_bounds = self.param_translator.lower_bounds
@@ -104,6 +104,7 @@ class RandomSearchMetaheuristic:
         self.pop_size = pop_size
         self.n_jobs = n_jobs
         self.to_optimize = metric_name
+        self.to_optimize2 = metric_name2
         random.seed(1337)
         self.generate_population()
     
@@ -142,8 +143,8 @@ class RandomSearchMetaheuristic:
     
     def sort_solutions(solutions):
         #First: Mean fitness, Second: Min fitness, Third: smaller standard deviation
-        #solutions.sort(key = lambda tp: (round(tp[1][0], 3), round(tp[1][1], 3), -tp[1][2]))
-        solutions.sort(key = lambda tp: tp[1])
+        solutions.sort(key = lambda tp: (round(tp[1][0], 2), tp[1][1]))
+        #solutions.sort(key = lambda tp: tp[1])
     
     def run_tests(self, objective_func, gens=4, top_perc = 0.33, log_dir="/tmp/"):
         all_solutions = []
@@ -169,7 +170,8 @@ class RandomSearchMetaheuristic:
                 })
             json.dump(log_dict, open(gen_file, 'w'), indent=4)
 
-            fitness_vec = [m_dict[self.to_optimize] for m_dict in fitness_vec]
+            fitness_vec = [(m_dict[self.to_optimize], m_dict[self.to_optimize2]) 
+                for m_dict in fitness_vec]
 
             solutions_with_fitness = [(self.population[i], fitness_vec[i])
                 for i in range(self.pop_size)]
@@ -182,7 +184,7 @@ class RandomSearchMetaheuristic:
             #print(top_msg)
             for s, f in top_best:
                 #print('Mean ROC AUC: ' + str(f))
-                report.append('Mean ROC AUC: ' + str(f))
+                report.append('Mean ROC AUC and F1: ' + str(f))
             if gen < gens:
                 self.population = self.new_population(top_best)
 
