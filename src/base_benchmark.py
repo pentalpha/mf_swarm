@@ -57,26 +57,26 @@ def run_validation(node, solution_dict, features):
     y_pred_04 = (val_y_pred > 0.4).astype(int)
     y_pred_05 = (val_y_pred > 0.5).astype(int)
     y_pred_06 = (val_y_pred > 0.6).astype(int)
-    f1_score_w_04 = metrics.f1_score(val_df_y_np, y_pred_04, average='weighted')
+    f1_score = metrics.f1_score(val_df_y_np, y_pred_05, average='macro')
     f1_score_w_05 = metrics.f1_score(val_df_y_np, y_pred_05, average='weighted')
     f1_score_w_06 = metrics.f1_score(val_df_y_np, y_pred_06, average='weighted')
-    recall_score_w_04 = metrics.recall_score(val_df_y_np, y_pred_04, average='weighted')
+    recall_score = metrics.recall_score(val_df_y_np, y_pred_05, average='macro')
     recall_score_w_05 = metrics.recall_score(val_df_y_np, y_pred_05, average='weighted')
     recall_score_w_06 = metrics.recall_score(val_df_y_np, y_pred_06, average='weighted')
-    precision_score_w_04 = metrics.precision_score(val_df_y_np, y_pred_04, average='weighted')
+    precision_score = metrics.precision_score(val_df_y_np, y_pred_05, average='macro')
     precision_score_w_05 = metrics.precision_score(val_df_y_np, y_pred_05, average='weighted')
     precision_score_w_06 = metrics.precision_score(val_df_y_np, y_pred_06, average='weighted')
     
     val_stats = {'ROC AUC': float(roc_auc_score_mac),
         'ROC AUC W': float(roc_auc_score_w),
         'Accuracy': float(acc), 
-        'f1_score_w_04': f1_score_w_04,
+        'f1_score': f1_score,
         'f1_score_w_05': f1_score_w_05,
         'f1_score_w_06': f1_score_w_06,
-        'recall_score_w_04': recall_score_w_04,
+        'recall_score': recall_score,
         'recall_score_w_05': recall_score_w_05,
         'recall_score_w_06': recall_score_w_06,
-        'precision_score_w_04': precision_score_w_04,
+        'precision_score': precision_score,
         'precision_score_w_05': precision_score_w_05,
         'precision_score_w_06': precision_score_w_06,
         'val_x': len(val_df)
@@ -124,7 +124,7 @@ def run_basebenchmark_test(exp):
     del params_dict_custom['taxa_profile']
     problem_translator = ProblemTranslator(params_dict_custom)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
-    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 80,
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 120,
         n_jobs=3, metric_name="ROC AUC W", metric_name2 = 'f1_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])

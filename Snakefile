@@ -18,10 +18,11 @@ print(parquet_search_query)
 parquets = glob(parquet_search_query)
 print('Parquets:', parquets)
 
-models_to_test = ['esm2_t6', 'esm2_t12', 'esm2_t30', 
-    'ankh_base', 'prottrans', 'esm2_t33', 'ankh_large', 
-    'esm2_t36']
-
+models_to_test = ['esm2_t36', 'ankh_large', 'esm2_t33', 'prottrans', 
+    'ankh_base', 'esm2_t30', 'esm2_t12', 'esm2_t6']
+#models_to_test = ['esm2_t6', 'esm2_t12', 'esm2_t30', 
+#    'ankh_base', 'prottrans', 'esm2_t33', 'ankh_large', 
+#    'esm2_t36']
 #models_to_test = ['esm2_t6', 'esm2_t12', 'ankh_base']
 
 all_outputs = [experiments_dir+'/'+model_to_test+'.json' 
@@ -43,11 +44,11 @@ for model_to_test in models_to_test:
                 +" "+str(real_test_perc)
                 +" "+experiments_dir
                 +" {input}"
-    
 
 rule run_first_benchmark:
     input:
+        'src/plotting.py',
         all_outputs
     shell:
-        "ls -lsht " + experiments_dir
+        "conda run --live-stream -n plotting python src/plotting.py " + experiments_dir
         
