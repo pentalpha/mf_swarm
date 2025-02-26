@@ -1,8 +1,8 @@
 {
     "plm": {
-        "l1_dim": [0.1, 2],
+        "l1_dim": [0.25, 1.9],
         "l2_dim": [0.4, 0.8],
-        "dropout_rate": [0.45, 0.85],
+        "dropout_rate": [0.5, 1.0],
         "leakyrelu_1_alpha": [0.02, 0.2]
     },
     "taxa": {
@@ -18,12 +18,12 @@
         "leakyrelu_1_alpha": [0.03, 0.9]
     },
     "final": {
-        "dropout_rate": [0.25,0.75],
-        "final_dim": [275,600],
-        "patience": [8,14],
+        "dropout_rate": [0.25,0.7],
+        "final_dim": [300,550],
+        "patience": [8,13],
         "epochs": [38,48],
-        "learning_rate": [0.00050,
+        "learning_rate": [0.00060,
                           0.00075],
-        "batch_size": [150,210]
+        "batch_size": [130,200]
     }
 }

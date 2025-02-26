@@ -2,7 +2,9 @@ import json
 #from multiprocessing import Pool
 #from mealpy import FloatVar
 from multiprocessing import Pool
+import multiprocessing
 import random
+import signal
 
 import numpy as np
 
@@ -72,6 +74,26 @@ class RandomSearchMetaheuristic:
         solutions.sort(key = lambda tp: (round(tp[1][0], 2), tp[1][1]))
         #solutions.sort(key = lambda tp: tp[1])
     
+    def get_fitness(self, objective_func):
+        if self.n_jobs <= 1:
+            fitness_vec = [objective_func(a) for a in self.population]
+        else:
+            original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+            pool = Pool(self.n_jobs)
+            signal.signal(signal.SIGINT, original_sigint_handler)
+            try:
+                res = pool.map_async(objective_func, self.population)
+                fitness_vec = res.get()
+            except KeyboardInterrupt:
+                print("Caught KeyboardInterrupt, terminating workers")
+                pool.terminate()
+                quit(1)
+            else:
+                #print("Normal termination")
+                pool.close()
+            pool.join()
+        return fitness_vec
+
     def run_tests(self, objective_func, gens=4, top_perc = 0.33, log_dir="/tmp/"):
         all_solutions = []
         report = []
@@ -79,12 +101,13 @@ class RandomSearchMetaheuristic:
         for gen in range(gens):
             gen_file = log_dir + '/gen_'+str(gen)+'_population.json'
             print(self.test_name, 'gen', gen)
+            fitness_vec = self.get_fitness(objective_func)
 
-            if self.n_jobs <= 1:
+            '''if self.n_jobs <= 1:
                 fitness_vec = [objective_func(a) for a in self.population]
             else:
                 with Pool(self.n_jobs) as pool:
-                    fitness_vec = pool.map(objective_func, self.population)
+                    fitness_vec = pool.map(objective_func, self.population)'''
             
             log_dict = {
                 'population': []

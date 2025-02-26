@@ -2,7 +2,7 @@ from glob import glob
 from os import path, mkdir
 configfile: "config.yml"
 
-experiments_dir = path.expanduser(config['experiments_dir'])
+base_benchmark_dir = path.expanduser(config['base_benchmark_dir'])
 dimension_db_dir = path.expanduser(config['dimension_db_dir'])
 datasets_dir = path.expanduser(config['datasets_dir'])
 release_n = config['release_n']
@@ -25,7 +25,7 @@ models_to_test = ['esm2_t36', 'ankh_large', 'esm2_t33', 'prottrans',
 #    'esm2_t36']
 #models_to_test = ['esm2_t6', 'esm2_t12', 'ankh_base']
 
-all_outputs = [experiments_dir+'/'+model_to_test+'.json' 
+all_outputs = [base_benchmark_dir+'/'+model_to_test+'.json' 
     for model_to_test in models_to_test]
 
 for model_to_test in models_to_test:
@@ -33,7 +33,7 @@ for model_to_test in models_to_test:
         input:
             dimension_db_dir+'/release_'+str(release_n)+'/emb.'+model_to_test+'.parquet'
         output:
-            experiments_dir+'/'+model_to_test+'.json'
+            base_benchmark_dir+'/'+model_to_test+'.json'
         shell:
             "conda run --live-stream -n mf_swarm_base"
                 " python src/base_benchmark.py "+dimension_db_dir
@@ -42,13 +42,15 @@ for model_to_test in models_to_test:
                 +" "+str(min_proteins_per_mf)
                 +" "+str(val_perc)
                 +" "+str(real_test_perc)
-                +" "+experiments_dir
+                +" "+base_benchmark_dir
                 +" {input}"
 
 rule run_first_benchmark:
     input:
         'src/plotting.py',
         all_outputs
+    output:
+        base_benchmark_dir + '/benchmark.tsv'
     shell:
-        "conda run --live-stream -n plotting python src/plotting.py " + experiments_dir
+        "conda run --live-stream -n plotting python src/summarize_base_benchmark.py " + base_benchmark_dir
         

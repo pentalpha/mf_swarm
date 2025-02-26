@@ -124,7 +124,7 @@ def run_basebenchmark_test(exp):
     del params_dict_custom['taxa_profile']
     problem_translator = ProblemTranslator(params_dict_custom)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
-    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 120,
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 150,
         n_jobs=3, metric_name="f1_score_w_06", metric_name2 = 'precision_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])
