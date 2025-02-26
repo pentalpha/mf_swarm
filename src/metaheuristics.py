@@ -114,7 +114,7 @@ class RandomSearchMetaheuristic:
             }
             for sol, m_dict in zip(self.population, fitness_vec):
                 log_dict['population'].append({
-                    'solution': sol,
+                    'solution': self.param_translator.decode(sol),
                     'metrics': m_dict
                 })
             json.dump(log_dict, open(gen_file, 'w'), indent=4)
@@ -158,5 +158,162 @@ class RandomSearchMetaheuristic:
         #print(report)
         return best_solution, best_fitness, report
 
+class GeneticAlgorithm:
+    def __init__(self, test_name, param_translator: ProblemTranslator, pop_size, n_jobs=24,
+                 metric_name=None, metric_name2=None, crossover_rate=0.8,
+                 mutation_rate=0.1, tournament_size=3):
+        """
+        Genetic Algorithm for optimizing parameters.
 
+        Args:
+            test_name (str): Name of the experiment.
+            param_translator (ProblemTranslator): Object that translates parameter sets.
+            pop_size (int): Size of the population.
+            n_jobs (int): Number of parallel processes.
+            metric_name (str): Primary metric to optimize.
+            metric_name2 (str): Secondary metric to optimize.
+            crossover_rate (float): Probability of crossover occurring.
+            mutation_rate (float): Probability of mutation occurring.
+            tournament_size (int): Number of candidates in tournament selection.
+        """
+        self.test_name = test_name
+        self.param_translator = param_translator
+        self.bounds = list(zip(param_translator.lower_bounds, param_translator.upper_bounds))
+        self.pop_size = pop_size
+        self.n_jobs = n_jobs
+        self.metric_name = metric_name
+        self.metric_name2 = metric_name2
+        self.crossover_rate = crossover_rate
+        self.mutation_rate = mutation_rate
+        self.tournament_size = tournament_size
 
+        random.seed(1337)
+        self._initialize_population()
+
+    def _initialize_population(self):
+        """Generates the initial population with random values within bounds."""
+        self.population = [[random.uniform(lb, ub) for lb, ub in self.bounds] for _ in range(self.pop_size)]
+
+    def _tournament_selection(self, solutions_with_fitness):
+        """Selects individuals using tournament selection."""
+        selected = []
+        for _ in range(self.pop_size):
+            candidates = random.sample(solutions_with_fitness, self.tournament_size)
+            candidates.sort(key=lambda x: (round(x[1][0], 2), x[1][1]), reverse=True)  # Maximize fitness
+            selected.append(candidates[0])
+        return selected
+
+    def _crossover(self, parent1, parent2):
+        """Performs single-point crossover between two parents."""
+        if random.random() >= self.crossover_rate:
+            return parent1.copy(), parent2.copy()  # No crossover, return as is
+        
+        crossover_point = random.randint(1, len(parent1) - 1)
+        child1 = parent1[:crossover_point] + parent2[crossover_point:]
+        child2 = parent2[:crossover_point] + parent1[crossover_point:]
+        return child1, child2
+
+    def _mutate(self, individual):
+        """Applies mutation by randomly changing some genes within bounds."""
+        for i in range(len(individual)):
+            if random.random() < self.mutation_rate:
+                lb, ub = self.bounds[i]
+                individual[i] = random.uniform(lb, ub)
+        return individual
+
+    def _generate_new_population(self, solutions_with_fitness):
+        """Creates the next generation using selection, crossover, and mutation."""
+        new_population = []
+        selected_parents = self._tournament_selection(solutions_with_fitness)
+        
+        while len(new_population) < self.pop_size:
+            parent1, parent2 = random.sample(selected_parents, 2)
+            child1, child2 = self._crossover(parent1[0], parent2[0])
+            new_population.append(self._mutate(child1))
+            if len(new_population) < self.pop_size:
+                new_population.append(self._mutate(child2))
+        
+        return new_population
+    
+    def _evaluate_fitness(self, objective_func):
+        if self.n_jobs <= 1:
+            fitness_vec = [objective_func(a) for a in self.population]
+        else:
+            original_sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
+            pool = Pool(self.n_jobs)
+            signal.signal(signal.SIGINT, original_sigint_handler)
+            try:
+                res = pool.map_async(objective_func, self.population)
+                fitness_vec = res.get()
+            except KeyboardInterrupt:
+                print("Caught KeyboardInterrupt, terminating workers")
+                pool.terminate()
+                quit(1)
+            else:
+                pool.close()
+            pool.join()
+        return fitness_vec
+    
+    def run(self, objective_func, generations=4, log_dir="/tmp/"):
+        """
+        Runs the genetic algorithm for a given number of generations.
+
+        Args:
+            objective_func (function): Function to evaluate fitness.
+            generations (int): Number of generations.
+            log_dir (str): Directory to store log files.
+
+        Returns:
+            tuple: Best solution, best fitness, and detailed report.
+        """
+        all_solutions = []
+        report = []
+
+        for gen in range(generations):
+            print(f"{self.test_name} - Generation {gen}")
+
+            # Evaluate fitness
+            fitness_results = self._evaluate_fitness(objective_func)
+
+            # Log generation data
+            generation_log = {
+                'population': [{'solution': self.param_translator.decode(sol), 'metrics': metrics}
+                               for sol, metrics in zip(self.population, fitness_results)]
+            }
+            with open(f"{log_dir}/gen_{gen}_population.json", "w") as f:
+                json.dump(generation_log, f, indent=4)
+
+            # Extract primary and secondary fitness scores
+            fitness_values = [(metrics[self.metric_name], metrics[self.metric_name2]) for metrics in fitness_results]
+
+            # Combine population with fitness scores
+            solutions_with_fitness = list(zip(self.population, fitness_values))
+            all_solutions.extend(solutions_with_fitness)
+
+            # Sort all solutions by fitness (higher is better)
+            all_solutions.sort(key=lambda x: (round(x[1][0], 2), x[1][1]), reverse=True)
+
+            # Log top 5 solutions
+            report.append(f"\nTop solutions at generation {gen}:")
+            report.extend([f"Mean ROC AUC and F1: {fitness}" for _, fitness in all_solutions[:5]])
+
+            # Generate new population (except for last generation)
+            if gen < generations - 1:
+                self.population = self._generate_new_population(solutions_with_fitness)
+
+        # Final results
+        top_solutions = all_solutions[:min(12, len(self.population))]
+        best_solution, best_fitness = all_solutions[0]
+
+        report.append(f"Top {len(top_solutions)} final solutions:")
+        for sol, fitness in top_solutions:
+            solution_str = json.dumps(self.param_translator.decode(sol), indent=4)
+            report.extend(solution_str.split("\n"))
+            report.append(f"ROC AUC: {fitness}")
+
+        # Log parameter statistics
+        for i, param_name in enumerate(self.param_translator.params_list):
+            param_values = [sol[i] for sol, _ in top_solutions]
+            report.append(f"{param_name} - Mean: {np.mean(param_values):.4f}, Std: {np.std(param_values):.4f}")
+
+        return best_solution, best_fitness, "\n".join(report)
