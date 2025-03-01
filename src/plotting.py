@@ -4,9 +4,18 @@ from os import path
 import matplotlib.pyplot as plt
 from decimal import Decimal
 import sys
+import pandas as pd
 
 from param_translator import ProblemTranslator
 from util_base import plm_sizes
+
+model_colors = {
+    'ankh_base': 'red', 'ankh_large': 'darkred', 
+    'esm2_t6': '#8FF259', 'esm2_t12': '#43D984', 
+    'esm2_t30': '#3F1C34', 'esm2_t33': '#FFF955', 
+    'esm2_t36': '#AD00B0', 
+    'prottrans': 'blue'
+}
 
 def load_solutions(benchmark_path):
     val_jsons = glob(benchmark_path+'/*.json')
@@ -42,7 +51,11 @@ def load_solutions(benchmark_path):
         
         for gen in gens:
             for p in gen['population']:
-                s = translator.decode(p['solution'])
+                genes = p['solution']
+                if type(genes) == list:
+                    s = translator.decode(genes)
+                else:
+                    s = genes
                 s['plm'] = s[n]
                 del s[n]
                 s['plm']['l1_dim'] = s['plm']['l1_dim']/plm_sizes[n]
@@ -90,6 +103,81 @@ def load_final_solutions(benchmark_path):
             del  data['solution'][key_group_name]
     
     return solutions
+
+def load_gens_df(benchmark_path):
+    #print('model dirs:', benchmark_path+'/*')
+    model_dirs = [d for d in glob(benchmark_path+'/*') if path.isdir(d)]
+    
+    rows = []
+    for model_dir in model_dirs:
+        n = path.basename(model_dir)
+        translator_path = model_dir + '/params_dict_custom.json'
+        if path.exists(translator_path) and n in plm_sizes:
+            translator = ProblemTranslator(None, raw_values=json.load(open(translator_path, 'r')))
+            gen_jsons = glob(model_dir+'/gen_*_population.json')
+            for json_path in gen_jsons:
+                gen_n = int(path.basename(json_path).split('_')[1])
+                gen_pop = json.load(open(json_path, 'r'))
+                for x in gen_pop['population']:
+                    genes = x['solution']
+                    if type(genes) == list:
+                        s = translator.decode(genes)
+                    else:
+                        s = genes
+                    s['plm'] = s[n]
+                    del s[n]
+                    s['plm']['l1_dim'] = s['plm']['l1_dim']/plm_sizes[n]
+                    s['plm']['l2_dim'] = s['plm']['l2_dim']/plm_sizes[n]
+                    
+                    for key_group_name in ['plm', 'final']:
+                        for key, v in s[key_group_name].items():
+                            s[key_group_name+'_'+key] = v
+                        del s[key_group_name]
+                    
+                    new_row = {'model': n, 'gen': gen_n}
+                    for m_name, m_value in x['metrics'].items():
+                        new_row[m_name] = m_value
+                    for p_name, p_value in s.items():
+                        new_row[p_name] = p_value
+                    
+                    rows.append(new_row)
+                    #print(new_row)
+    
+    df = pd.DataFrame(rows)
+
+    return df
+
+def plot_gens_evol(gens_df, output_path, metric_to_plot):
+    fig, ax = plt.subplots(1, 1, figsize=(12,5))
+    all_gens = set()
+    for model_name, model_rows in gens_df.groupby('model'):
+        x = []
+        y = []
+        for gen_n, model_gen_rows in model_rows.groupby('gen'):
+            max_val = model_gen_rows[metric_to_plot].max()
+            x.append(gen_n)
+            y.append(max_val)
+        all_gens.update(x)
+        ax.plot(x, y, label=model_name, linewidth=5, alpha=0.7, color=model_colors[model_name])
+    all_gens = [int(g) for g in sorted(all_gens)]
+    ax.set_xticks(all_gens, [str(g) for g in all_gens])
+    ax.set_xlim(min(all_gens), max(all_gens))
+    ax.legend()
+    ax.set_title('Metaheuristics Evolution - ' + metric_to_plot)
+    fig.tight_layout()
+    try:
+        fig.savefig(output_path, dpi=200)
+    except Exception as err:
+        pass
+
+def iterative_gens_draw(benchmark_path, prev_n_gens=0):
+    gens_df = load_gens_df(benchmark_path)
+    if len(gens_df) > prev_n_gens:
+        for m in ['f1_score_w_06', 'ROC AUC W', 'precision_score_w_06']:
+            gens_plot_path = benchmark_path +'/evol-'+m+'.png'
+            plot_gens_evol(gens_df, gens_plot_path, m)
+        gens_df.to_csv(benchmark_path + '/all_gens.csv', sep=',')
+    return len(gens_df)
 
 def plot_metrics(benchmark_path, final=True):
     if final:
@@ -215,7 +303,8 @@ def plot_final_solution_performance(benchmark_path):
     fig.savefig(benchmark_path+'/model_performance.png', dpi=120)
     
 if __name__ == '__main__':
-    #benchmark_path = '/home/pita/experiments/base_benchmark_4'
-    benchmark_path = sys.argv[1]
-    plot_final_solution_performance(benchmark_path)
-    plot_metrics(benchmark_path, final=False)
+    benchmark_path = '/home/pita/experiments/base_benchmark_4'
+    #benchmark_path = sys.argv[1]
+    iterative_gens_draw(benchmark_path)
+    
+    

@@ -18,22 +18,23 @@ print(parquet_search_query)
 parquets = glob(parquet_search_query)
 print('Parquets:', parquets)
 
-models_to_test = ['esm2_t36', 'ankh_large', 'esm2_t33', 'prottrans', 
-    'ankh_base', 'esm2_t30', 'esm2_t12', 'esm2_t6']
+models_to_test = config["models_to_test"].split(',')
 #models_to_test = ['esm2_t6', 'esm2_t12', 'esm2_t30', 
 #    'ankh_base', 'prottrans', 'esm2_t33', 'ankh_large', 
 #    'esm2_t36']
 #models_to_test = ['esm2_t6', 'esm2_t12', 'ankh_base']
 
-all_outputs = [base_benchmark_dir+'/'+model_to_test+'.json' 
+parquet_inputs = [dimension_db_dir+'/release_'+str(release_n)+'/emb.'+model_to_test+'.parquet'
+    for model_to_test in models_to_test]
+single_model_eval_outputs = [base_benchmark_dir+'/'+model_to_test+'.json' 
     for model_to_test in models_to_test]
 
-for model_to_test in models_to_test:
+for parquet_input, single_model_eval_output in zip(parquet_inputs, single_model_eval_outputs):
     rule:
         input:
-            dimension_db_dir+'/release_'+str(release_n)+'/emb.'+model_to_test+'.parquet'
+            parquet_input
         output:
-            base_benchmark_dir+'/'+model_to_test+'.json'
+            single_model_eval_output
         shell:
             "conda run --live-stream -n mf_swarm_base"
                 " python src/base_benchmark.py "+dimension_db_dir
@@ -48,7 +49,7 @@ for model_to_test in models_to_test:
 rule run_first_benchmark:
     input:
         'src/plotting.py',
-        all_outputs
+        single_model_eval_outputs
     output:
         base_benchmark_dir + '/benchmark.tsv'
     shell:

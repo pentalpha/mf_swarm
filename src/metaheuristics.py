@@ -5,10 +5,11 @@ from multiprocessing import Pool
 import multiprocessing
 import random
 import signal
-
+from os import path, mkdir
 import numpy as np
 
 from param_translator import ProblemTranslator
+from plotting import iterative_gens_draw
 
 #param_sets = json.load(open('config/base_param_bounds.json', 'r'))
 #default_params = param_sets[-1]
@@ -268,7 +269,11 @@ class GeneticAlgorithm:
         """
         all_solutions = []
         report = []
-
+        last_n = 0
+        super_log_dir = path.dirname(log_dir)
+        print('Base benchmark dir is', super_log_dir)
+        super_log_dir = super_log_dir if path.exists(super_log_dir) else None
+        gen_bests = []
         for gen in range(generations):
             print(f"{self.test_name} - Generation {gen}")
 
@@ -282,10 +287,24 @@ class GeneticAlgorithm:
             }
             with open(f"{log_dir}/gen_{gen}_population.json", "w") as f:
                 json.dump(generation_log, f, indent=4)
+            
+            if super_log_dir:
+                try:
+                    new_n = iterative_gens_draw(super_log_dir, prev_n_gens=last_n)
+                    last_n = new_n
+                except Exception as err:
+                    print('Exception while trying to draw evolution:')
+                    print(err)
 
             # Extract primary and secondary fitness scores
-            fitness_values = [(metrics[self.metric_name], metrics[self.metric_name2]) for metrics in fitness_results]
-
+            fitness_values = [(metrics[self.metric_name], metrics[self.metric_name2]) 
+                              for metrics in fitness_results]
+            main_fitness = sorted([round(a, 3) for a, b in fitness_values])
+            current_best = main_fitness[-1]
+            gen_bests.append(current_best)
+            gens_sorted = sorted([(val, n) for n, val in enumerate(gen_bests)])
+            best_gen_so_far = gens_sorted[-1][1]
+            
             # Combine population with fitness scores
             solutions_with_fitness = list(zip(self.population, fitness_values))
             all_solutions.extend(solutions_with_fitness)
@@ -296,7 +315,8 @@ class GeneticAlgorithm:
             # Log top 5 solutions
             report.append(f"\nTop solutions at generation {gen}:")
             report.extend([f"Mean ROC AUC and F1: {fitness}" for _, fitness in all_solutions[:5]])
-
+            if gen - best_gen_so_far >= 2:
+                report.append(f"Best gen was {best_gen_so_far}, stopping early")
             # Generate new population (except for last generation)
             if gen < generations - 1:
                 self.population = self._generate_new_population(solutions_with_fitness)

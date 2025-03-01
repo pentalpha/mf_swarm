@@ -15,7 +15,7 @@ import polars as pl
 from sklearn import metrics
 import numpy as np
 
-from metaheuristics import ProblemTranslator, RandomSearchMetaheuristic, param_bounds
+from metaheuristics import ProblemTranslator, RandomSearchMetaheuristic, param_bounds, GeneticAlgorithm
 from create_dataset import Dataset, find_latest_dataset
 from dimension_db import DimensionDB
 from node_factory import create_params_for_features, sample_train_test, train_node
@@ -123,13 +123,14 @@ def run_basebenchmark_test(exp):
     del params_dict_custom['taxa']
     del params_dict_custom['taxa_profile']
     problem_translator = ProblemTranslator(params_dict_custom)
+    json.dump(problem_translator.to_dict(), open(local_dir + '/params_dict_custom.json', 'w'), indent=4)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
-    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 150,
-        n_jobs=3, metric_name="f1_score_w_06", metric_name2 = 'precision_score_w_06')
+    heuristic_model = GeneticAlgorithm(name, problem_translator, 80,
+        n_jobs=5, metric_name="f1_score_w_06", metric_name2 = 'precision_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])
-    best_solution, fitness, report = heuristic_model.run_tests(
-        runner.objective_func, gens=4, top_perc=0.5, log_dir=local_dir)
+    best_solution, fitness, report = heuristic_model.run(
+        runner.objective_func, generations=5,log_dir=local_dir)
     solution_dict = problem_translator.decode(best_solution)
     print('Saving', exp['name'])
     meta_report_path = local_dir + '/optimization.txt'
@@ -138,7 +139,6 @@ def run_basebenchmark_test(exp):
 
     val_results, validation_solved_df = run_validation(params_dict, solution_dict, features)
     validation_solved_df.write_parquet(local_dir+'/validation.parquet')
-    json.dump(problem_translator.to_dict(), open(local_dir + '/params_dict_custom.json', 'w'), indent=4)
     return val_results
 
 if __name__ == '__main__':

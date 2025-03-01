@@ -15,8 +15,10 @@ if __name__ == '__main__':
     solutions = load_final_solutions(benchmark_path)
 
     performances = []
-    metrics_to_use = ['f1_score_w_05', 'ROC AUC', 'ROC AUC W', 'precision_score_w_06', 'recall_score', 'Accuracy']
-    metric_pretty_names = ['F1 Score (W)', 'ROC AUC Score', 'ROC AUC Score (W)', 'Precision Score (W)', 'Recall Score', 'Binary Accuracy']
+    metrics_to_use = ['f1_score_w_05', 'ROC AUC', 'ROC AUC W', 
+                      'precision_score_w_06', 'recall_score', 'Accuracy']
+    metric_pretty_names = ['F1 Score (W)', 'ROC AUC Score', 'ROC AUC Score (W)', 
+                           'Precision Score (W)', 'Recall Score', 'Binary Accuracy']
 
     for name, v in solutions.items():
         new_perf = {'model': name}

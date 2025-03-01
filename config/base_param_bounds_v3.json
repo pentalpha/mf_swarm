@@ -1,0 +1,29 @@
+{
+    "plm": {
+        "l1_dim": [0.15, 2.1],
+        "l2_dim": [0.15, 1.6],
+        "dropout_rate": [0.4, 1.0],
+        "leakyrelu_1_alpha": [0.015, 0.2]
+    },
+    "taxa": {
+        "l1_dim": [100, 240],
+        "l2_dim": [64, 140],
+        "dropout_rate": [0.4, 0.6],
+        "leakyrelu_1_alpha": [0.03, 0.15]
+    },
+    "taxa_profile": {
+        "l1_dim": [160, 240],
+        "l2_dim": [100, 140],
+        "dropout_rate": [0.45, 0.55],
+        "leakyrelu_1_alpha": [0.03, 0.9]
+    },
+    "final": {
+        "dropout_rate": [0.25,0.7],
+        "final_dim": [300,800],
+        "patience": [6,12],
+        "epochs": [35,50],
+        "learning_rate": [0.00060,
+                          0.00080],
+        "batch_size": [130,200]
+    }
+}
