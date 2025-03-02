@@ -99,10 +99,14 @@ class RandomSearchMetaheuristic:
         all_solutions = []
         report = []
 
+        super_log_dir = path.dirname(log_dir)
+        print('Base benchmark dir is', super_log_dir)
+        last_n = 0
+        super_log_dir = super_log_dir if path.exists(super_log_dir) else None
         for gen in range(gens):
             gen_file = log_dir + '/gen_'+str(gen)+'_population.json'
             print(self.test_name, 'gen', gen)
-            fitness_vec = self.get_fitness(objective_func)
+            fitness_dicts = self.get_fitness(objective_func)
 
             '''if self.n_jobs <= 1:
                 fitness_vec = [objective_func(a) for a in self.population]
@@ -110,18 +114,25 @@ class RandomSearchMetaheuristic:
                 with Pool(self.n_jobs) as pool:
                     fitness_vec = pool.map(objective_func, self.population)'''
             
-            log_dict = {
-                'population': []
+            # Log generation data
+            generation_log = {
+                'population': [{'solution': self.param_translator.decode(sol), 'metrics': metrics}
+                               for sol, metrics in zip(self.population, fitness_dicts)]
             }
-            for sol, m_dict in zip(self.population, fitness_vec):
-                log_dict['population'].append({
-                    'solution': self.param_translator.decode(sol),
-                    'metrics': m_dict
-                })
-            json.dump(log_dict, open(gen_file, 'w'), indent=4)
+            with open(f"{log_dir}/gen_{gen}_population.json", "w") as f:
+                json.dump(generation_log, f, indent=4)
 
             fitness_vec = [(m_dict[self.to_optimize], m_dict[self.to_optimize2]) 
-                for m_dict in fitness_vec]
+                for m_dict in fitness_dicts]
+            
+            if super_log_dir:
+                try:
+                    new_n = iterative_gens_draw(super_log_dir, prev_n_gens=last_n)
+                    last_n = new_n
+                except Exception as err:
+                    print('Exception while trying to draw evolution:')
+                    print(err)
+                    raise(err)
 
             solutions_with_fitness = [(self.population[i], fitness_vec[i])
                 for i in range(self.pop_size)]

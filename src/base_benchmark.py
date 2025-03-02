@@ -81,6 +81,13 @@ def run_validation(node, solution_dict, features):
         'precision_score_w_06': precision_score_w_06,
         'val_x': len(val_df)
     }
+
+    metric_weights = [('ROC AUC W', 3), ('recall_score_w_06', 3), 
+                      ('ROC AUC', 2), ('f1_score', 2), 
+                      ('recall_score', 2), ('precision_score', 2)]
+    w_total = sum([w for m, w in metric_weights])
+    val_stats['fitness'] = sum([val_stats[m]*w for m, w in metric_weights]) / w_total
+
     results = {
         'test': stats,
         'validation': val_stats,
@@ -125,12 +132,12 @@ def run_basebenchmark_test(exp):
     problem_translator = ProblemTranslator(params_dict_custom)
     json.dump(problem_translator.to_dict(), open(local_dir + '/params_dict_custom.json', 'w'), indent=4)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
-    heuristic_model = GeneticAlgorithm(name, problem_translator, 80,
-        n_jobs=5, metric_name="f1_score_w_06", metric_name2 = 'precision_score_w_06')
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 150,
+        n_jobs=8, metric_name="f1_score_w_06", metric_name2 = 'precision_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])
-    best_solution, fitness, report = heuristic_model.run(
-        runner.objective_func, generations=5,log_dir=local_dir)
+    best_solution, fitness, report = heuristic_model.run_tests(
+        runner.objective_func, gens=4, top_perc=0.6, log_dir=local_dir)
     solution_dict = problem_translator.decode(best_solution)
     print('Saving', exp['name'])
     meta_report_path = local_dir + '/optimization.txt'

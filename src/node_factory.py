@@ -204,6 +204,12 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
         'Proteins': len(train_y) + len(test_y)
     }
 
+    metric_weights = [('ROC AUC W', 3), ('recall_score_w_06', 3), 
+                      ('ROC AUC', 2), ('f1_score', 2), 
+                      ('recall_score', 2), ('precision_score', 2)]
+    w_total = sum([w for m, w in metric_weights])
+    test_stats['fitness'] = sum([test_stats[m]*w for m, w in metric_weights]) / w_total
+
     return model, test_stats
 
 def prepare_data(node_dict, test_perc, max_proteins=60000):

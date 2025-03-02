@@ -173,7 +173,7 @@ def plot_gens_evol(gens_df, output_path, metric_to_plot):
 def iterative_gens_draw(benchmark_path, prev_n_gens=0):
     gens_df = load_gens_df(benchmark_path)
     if len(gens_df) > prev_n_gens:
-        for m in ['f1_score_w_06', 'ROC AUC W', 'precision_score_w_06']:
+        for m in ['f1_score_w_06', 'ROC AUC W', 'precision_score_w_06', 'fitness']:
             gens_plot_path = benchmark_path +'/evol-'+m+'.png'
             plot_gens_evol(gens_df, gens_plot_path, m)
         gens_df.to_csv(benchmark_path + '/all_gens.csv', sep=',')
