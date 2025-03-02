@@ -124,15 +124,26 @@ def load_gens_df(benchmark_path):
                         s = translator.decode(genes)
                     else:
                         s = genes
-                    s['plm'] = s[n]
-                    del s[n]
-                    s['plm']['l1_dim'] = s['plm']['l1_dim']/plm_sizes[n]
-                    s['plm']['l2_dim'] = s['plm']['l2_dim']/plm_sizes[n]
-                    
-                    for key_group_name in ['plm', 'final']:
-                        for key, v in s[key_group_name].items():
-                            s[key_group_name+'_'+key] = v
-                        del s[key_group_name]
+                    if n in s:
+                        s['plm'] = s[n]
+                        del s[n]
+                        s['plm']['l1_dim'] = s['plm']['l1_dim']/plm_sizes[n]
+                        s['plm']['l2_dim'] = s['plm']['l2_dim']/plm_sizes[n]
+                        
+                        for key_group_name in ['plm', 'final']:
+                            for key, v in s[key_group_name].items():
+                                s[key_group_name+'_'+key] = v
+                            del s[key_group_name]
+                    else:
+                        for param_group in list(s.keys()):
+                            param_dict = s[param_group]
+                            if 'l1_dim' in param_dict and 'l2_dim' in param_dict:
+                                param_dict['l1_dim'] = param_dict['l1_dim']/plm_sizes[n]
+                                param_dict['l2_dim'] = param_dict['l2_dim']/plm_sizes[n]
+                            
+                            for key, v in param_dict.items():
+                                s[param_group+'_'+key] = v
+                            del s[param_group]
                     
                     new_row = {'model': n, 'gen': gen_n}
                     for m_name, m_value in x['metrics'].items():

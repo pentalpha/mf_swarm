@@ -15,7 +15,7 @@ import polars as pl
 from sklearn import metrics
 import numpy as np
 
-from metaheuristics import ProblemTranslator, GeneticAlgorithm
+from metaheuristics import ProblemTranslator, GeneticAlgorithm, RandomSearchMetaheuristic
 from create_dataset import Dataset, find_latest_dataset
 from dimension_db import DimensionDB
 from node_factory import create_params_for_features, sample_train_test
@@ -51,12 +51,12 @@ def run_pair_test(exp):
     json.dump(problem_translator.to_dict(), open(local_dir + '/params_dict_custom.json', 'w'), indent=4)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
     
-    heuristic_model = GeneticAlgorithm(name, problem_translator, 8,
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 8,
         n_jobs=4, metric_name="f1_score_w_06", metric_name2 = 'precision_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])
-    best_solution, fitness, report = heuristic_model.run(
-        runner.objective_func, generations=2,log_dir=local_dir)
+    best_solution, fitness, report = heuristic_model.run_tests(
+        runner.objective_func, gens=2, top_perc=0.6, log_dir=local_dir)
     solution_dict = problem_translator.decode(best_solution)
     print('Saving', exp['name'])
     meta_report_path = local_dir + '/optimization.txt'
@@ -104,38 +104,41 @@ if __name__ == '__main__':
     models_sorted = []
     for rawline in open(base_benchmark_tsv_path, 'r'):
         if not rawline.startswith('model\t'):
-            models_sorted.append(rawline.split('\t')[0])
+            cells = rawline.split('\t')
+            models_sorted.append((float(cells[1]), cells[0]))
+    models_sorted.sort(reverse=True)
     best_models = models_sorted[:n_top]
-    for x in best_models:
-        for y in best_models:
+    for _, x in best_models:
+        for _, y in best_models:
             if y != x:
                 first, second = sorted([x, y])
                 feature_pairs.add((first, second))
-        feature_pairs.add((x, models_sorted[-1]))
+        feature_pairs.add((x, models_sorted[-1][1]))
     print('Pairs to test:')
     for a, b in feature_pairs:
         print(a, b)
     
     experiments = []
     for features_to_test in feature_pairs:
-        name = '-'.join(features_to_test)
+        name = '-'.join(list(features_to_test))
         experiment = {
             'feature_combo': name,
             'name': dataset_type+'_'+name,
-            'features': features_to_test,
+            'features': [c for c in features_to_test],
             'nodes': dataset.go_clusters,
             'test_perc': test_perc,
             'local_dir': pair_benchmark_dir + '/' + name
         }
         experiments.append(experiment)
 
-    all_results = []
+    all_results = {}
     for experiment in experiments:
         result_path = pair_benchmark_dir + '/'+experiment['feature_combo']+'.json'
         if not path.exists(result_path):
             result = run_pair_test(experiment)
-    
-        json.dump(result, open(result_path, 'w'), indent=4)
+            json.dump(result, open(result_path, 'w'), indent=4)
+        else:
+            result = json.load(open(result_path, 'r'))
         all_results[experiment['feature_combo']] = result
     
     json.dump(all_results, open(pair_benchmark_dir + '/pair_results.json', 'w'), indent=4)

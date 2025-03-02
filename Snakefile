@@ -3,6 +3,7 @@ from os import path, mkdir
 configfile: "config.yml"
 
 base_benchmark_dir = path.expanduser(config['base_benchmark_dir'])
+pairs_benchmark_dir = path.expanduser(config['pairs_benchmark_dir'])
 dimension_db_dir = path.expanduser(config['dimension_db_dir'])
 datasets_dir = path.expanduser(config['datasets_dir'])
 release_n = config['release_n']
@@ -37,7 +38,7 @@ for parquet_input, single_model_eval_output in zip(parquet_inputs, single_model_
             single_model_eval_output
         shell:
             "conda run --live-stream -n mf_swarm_base"
-                " python src/base_benchmark.py "+dimension_db_dir
+                +" python src/base_benchmark.py "+dimension_db_dir
                 +" "+str(release_n)
                 +" "+datasets_dir
                 +" "+str(min_proteins_per_mf)
@@ -55,3 +56,20 @@ rule run_first_benchmark:
     shell:
         "conda run --live-stream -n plotting python src/summarize_base_benchmark.py " + base_benchmark_dir
         
+rule run_pairs_benchmark:
+    input:
+        'src/model_pair_benchmark.py',
+        base_benchmark_dir + '/benchmark.tsv'
+    output:
+        pairs_benchmark_dir + '/pair_results.json'
+    shell:
+        "conda run --live-stream -n mf_swarm_base"
+            +" python src/model_pair_benchmark.py"
+                +" "+dimension_db_dir
+                +" "+str(release_n)
+                +" "+datasets_dir
+                +" "+str(min_proteins_per_mf)
+                +" "+str(val_perc)
+                +" "+str(real_test_perc)
+                +" "+base_benchmark_dir + '/benchmark.tsv'
+                +" "+pairs_benchmark_dir
