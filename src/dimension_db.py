@@ -5,7 +5,7 @@ import json
 from tqdm import tqdm
 import polars as pl
 import numpy as np
-from sklearn.model_selection import train_test_split
+
 import pyarrow.parquet as pq
 
 from util_base import concat_lists, run_command, irrelevant_mfs
@@ -175,6 +175,8 @@ class DimensionDB:
         return annotated_proteins, all_annotations, go_freqs_filtered
     
     def split_by_taxid(proteins_by_taxid, val_perc, min_proteins_in_taxid):
+        from sklearn.model_selection import train_test_split
+        
         val_set = set()
         traintest_set = set()
 

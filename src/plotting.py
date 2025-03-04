@@ -112,7 +112,7 @@ def load_gens_df(benchmark_path):
     for model_dir in model_dirs:
         n = path.basename(model_dir)
         translator_path = model_dir + '/params_dict_custom.json'
-        if path.exists(translator_path) and n in plm_sizes:
+        if path.exists(translator_path):
             translator = ProblemTranslator(None, raw_values=json.load(open(translator_path, 'r')))
             gen_jsons = glob(model_dir+'/gen_*_population.json')
             for json_path in gen_jsons:
@@ -124,7 +124,7 @@ def load_gens_df(benchmark_path):
                         s = translator.decode(genes)
                     else:
                         s = genes
-                    if n in s:
+                    if n in s and n in plm_sizes:
                         s['plm'] = s[n]
                         del s[n]
                         s['plm']['l1_dim'] = s['plm']['l1_dim']/plm_sizes[n]
@@ -138,8 +138,8 @@ def load_gens_df(benchmark_path):
                         for param_group in list(s.keys()):
                             param_dict = s[param_group]
                             if 'l1_dim' in param_dict and 'l2_dim' in param_dict:
-                                param_dict['l1_dim'] = param_dict['l1_dim']/plm_sizes[n]
-                                param_dict['l2_dim'] = param_dict['l2_dim']/plm_sizes[n]
+                                param_dict['l1_dim'] = param_dict['l1_dim']/plm_sizes[param_group]
+                                param_dict['l2_dim'] = param_dict['l2_dim']/plm_sizes[param_group]
                             
                             for key, v in param_dict.items():
                                 s[param_group+'_'+key] = v
@@ -169,7 +169,14 @@ def plot_gens_evol(gens_df, output_path, metric_to_plot):
             x.append(gen_n)
             y.append(max_val)
         all_gens.update(x)
-        ax.plot(x, y, label=model_name, linewidth=5, alpha=0.7, color=model_colors[model_name])
+        if not model_name in model_colors:
+            names = model_name.split('-')
+            if len(names) == 2:
+                ax.plot(x, y, label=names[0], linewidth=6, alpha=0.8, color=model_colors[names[0]])
+                ax.plot(x, y, label=names[1], linewidth=4, alpha=0.7, color=model_colors[names[1]])
+        else:
+            ax.plot(x, y, label=model_name, linewidth=6, alpha=0.7, color=model_colors[model_name])
+        
     all_gens = [int(g) for g in sorted(all_gens)]
     ax.set_xticks(all_gens, [str(g) for g in all_gens])
     ax.set_xlim(min(all_gens), max(all_gens))

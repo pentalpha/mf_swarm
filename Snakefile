@@ -47,6 +47,8 @@ for parquet_input, single_model_eval_output in zip(parquet_inputs, single_model_
                 +" "+base_benchmark_dir
                 +" {input}"
 
+run_pairs_sh = pairs_benchmark_dir + '/run_tests.sh'
+
 rule run_first_benchmark:
     input:
         'src/plotting.py',
@@ -56,20 +58,42 @@ rule run_first_benchmark:
     shell:
         "conda run --live-stream -n plotting python src/summarize_base_benchmark.py " + base_benchmark_dir
         
-rule run_pairs_benchmark:
+rule prepare_pairs:
     input:
-        'src/model_pair_benchmark.py',
-        base_benchmark_dir + '/benchmark.tsv'
+        'src/prepare_pairs_benchmark.py',
+        base_benchmark_dir + '/benchmark.tsv',
+        parquet_inputs
+    output:
+        run_pairs_sh
+    shell:
+        "conda run --live-stream -n mf_swarm_base"
+            +" python src/prepare_pairs_benchmark.py"
+            +" "+dimension_db_dir
+            +" "+str(release_n)
+            +" "+datasets_dir
+            +" "+str(min_proteins_per_mf)
+            +" "+str(val_perc)
+            +" "+str(real_test_perc)
+            +" "+base_benchmark_dir + '/benchmark.tsv'
+            +" "+pairs_benchmark_dir
+            +" "+run_pairs_sh
+        + " && chmod +x " + run_pairs_sh
+
+rule run_pair_tests:
+    input:
+        run_pairs_sh
     output:
         pairs_benchmark_dir + '/pair_results.json'
     shell:
-        "conda run --live-stream -n mf_swarm_base"
-            +" python src/model_pair_benchmark.py"
-                +" "+dimension_db_dir
-                +" "+str(release_n)
-                +" "+datasets_dir
-                +" "+str(min_proteins_per_mf)
-                +" "+str(val_perc)
-                +" "+str(real_test_perc)
-                +" "+base_benchmark_dir + '/benchmark.tsv'
-                +" "+pairs_benchmark_dir
+        "conda run --live-stream -n mf_swarm_base " + path.abspath(run_pairs_sh)
+
+rule summarize_pairs_benchmark:
+    input:
+        'src/summarize_pairs_benchmark.py',
+        pairs_benchmark_dir + '/pair_results.json'
+    output:
+        pairs_benchmark_dir + '/benchmark.tsv'
+    shell:
+        "conda run --live-stream -n plotting"
+            +" python src/summarize_pairs_benchmark.py " 
+            + pairs_benchmark_dir

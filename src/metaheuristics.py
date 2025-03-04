@@ -2,7 +2,6 @@ import json
 #from multiprocessing import Pool
 #from mealpy import FloatVar
 from multiprocessing import Pool
-import multiprocessing
 import random
 import signal
 from os import path, mkdir
