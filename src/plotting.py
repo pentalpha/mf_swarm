@@ -305,7 +305,7 @@ def plot_final_solution_performance(benchmark_path):
     names = []
 
     for name, v in solutions.items():
-        precision.append(v['metrics']['f1_score_w_05'])
+        precision.append(v['metrics']['AUPRC'])
         roc.append(v['metrics']['ROC AUC W'])
         names.append(name)
 
@@ -313,7 +313,7 @@ def plot_final_solution_performance(benchmark_path):
     ax.scatter(precision, roc, s=160)
     for i, txt in enumerate(names):
         ax.annotate(txt.upper().replace('_', ' '), (precision[i], roc[i]), ha='center', va='bottom')
-    ax.set_xlabel('F1 Weighted')
+    ax.set_xlabel('AUPRC')
     ax.set_ylabel('ROC AUC Weighted')
     ax.set_title('M.F. Classification Performance of PLMs')
     fig.tight_layout()

@@ -162,18 +162,23 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     x_list = [x for name, x in train_x]
     #print([x.shape for x in x_list], train_y.shape)
     #print([x.shape for x in x_test_vec], test_y.shape)
-    history = model.fit(x_list, 
+    hist = model.fit(x_list, 
         train_y,
         validation_data=(x_test_vec, test_y),
         epochs=epochs, batch_size=batch_size,
         callbacks=[lr_callback, es],
         verbose=0)
-    
+    n_epochs = len(hist.history['loss'])
+    epochs_norm = n_epochs / 100
+    epochs_norm2 = 1.0 - epochs_norm
     #print('Testing')
     y_pred = model.predict(x_test_vec, verbose=0)
     #roc_auc_score = metrics.roc_auc_score(test_y, y_pred)
     roc_auc_score_mac = metrics.roc_auc_score(test_y, y_pred, average='macro')
     roc_auc_score_w = metrics.roc_auc_score(test_y, y_pred, average='weighted')
+    
+    auprc_mac = metrics.average_precision_score(test_y, y_pred)
+    auprc_w = metrics.average_precision_score(test_y, y_pred, average='weighted')
     acc = np.mean(keras.metrics.binary_accuracy(test_y, y_pred).numpy())
 
     y_pred_04 = (y_pred > 0.4).astype(int)
@@ -191,6 +196,8 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     test_stats = {
         'ROC AUC': float(roc_auc_score_mac),
         'ROC AUC W': float(roc_auc_score_w),
+        'AUPRC': float(auprc_mac),
+        'AUPRC W': float(auprc_w),
         'Accuracy': float(acc), 
         'f1_score': f1_score,
         'f1_score_w_05': f1_score_w_05,
@@ -201,12 +208,12 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
         'precision_score': precision_score,
         'precision_score_w_05': precision_score_w_05,
         'precision_score_w_06': precision_score_w_06,
-        'Proteins': len(train_y) + len(test_y)
+        'Proteins': len(train_y) + len(test_y),
+        'quickness': epochs_norm2
     }
 
-    metric_weights = [('ROC AUC W', 3), ('recall_score_w_06', 3), 
-                      ('ROC AUC', 2), ('f1_score', 2), 
-                      ('recall_score', 2), ('precision_score', 2)]
+    metric_weights = [('ROC AUC W', 4), ('AUPRC', 4), 
+                      ('quickness', 1)]
     w_total = sum([w for m, w in metric_weights])
     test_stats['fitness'] = sum([test_stats[m]*w for m, w in metric_weights]) / w_total
 
@@ -367,19 +374,29 @@ def predict_with_model(nodes, experiment_dir):
 
     return big_table_path
 
-def create_params_for_features(features):
-    params_dict = {k: {k2: v2 for k2, v2 in v.items()} for k, v in param_bounds.items()}
+def create_params_for_features(features, bounds=param_bounds, convert_plm_dims=True):
+    params_dict = {k: {k2: v2 for k2, v2 in v.items()} for k, v in bounds.items()}
     plm_base_params = params_dict['plm']
     for feature_name in features:
         feature_len = plm_sizes[feature_name]
-        params_dict[feature_name] = {
-            "l1_dim": [int(plm_base_params["l1_dim"][0]*feature_len), 
-                        int(plm_base_params["l1_dim"][1]*feature_len)],
-            "l2_dim": [int(plm_base_params["l2_dim"][0]*feature_len), 
-                        int(plm_base_params["l2_dim"][1]*feature_len)],
-            "dropout_rate": plm_base_params['dropout_rate'],
-            "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
-        }
+        if convert_plm_dims:
+            params_dict[feature_name] = {
+                "l1_dim": [int(plm_base_params["l1_dim"][0]*feature_len), 
+                            int(plm_base_params["l1_dim"][1]*feature_len)],
+                "l2_dim": [int(plm_base_params["l2_dim"][0]*feature_len), 
+                            int(plm_base_params["l2_dim"][1]*feature_len)],
+                "dropout_rate": plm_base_params['dropout_rate'],
+                "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
+            }
+        else:
+            params_dict[feature_name] = {
+                "l1_dim": [int(plm_base_params["l1_dim"][0]), 
+                            int(plm_base_params["l1_dim"][1])],
+                "l2_dim": [int(plm_base_params["l2_dim"][0]), 
+                            int(plm_base_params["l2_dim"][1])],
+                "dropout_rate": plm_base_params['dropout_rate'],
+                "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
+            }
     del params_dict['plm']
 
     return params_dict

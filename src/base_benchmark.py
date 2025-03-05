@@ -19,7 +19,7 @@ from metaheuristics import ProblemTranslator, RandomSearchMetaheuristic, param_b
 from create_dataset import Dataset, find_latest_dataset
 from dimension_db import DimensionDB
 from node_factory import create_params_for_features, sample_train_test, train_node
-from util_base import run_command, plm_sizes
+from util_base import run_command
 
 class BaseBenchmarkRunner():
     def __init__(self, param_translator, node, features):
@@ -53,6 +53,8 @@ def run_validation(node, solution_dict, features):
     acc = np.mean(keras.metrics.binary_accuracy(val_df_y_np, val_y_pred).numpy())
     roc_auc_score_mac = metrics.roc_auc_score(val_df_y_np, val_y_pred, average='macro')
     roc_auc_score_w = metrics.roc_auc_score(val_df_y_np, val_y_pred, average='weighted')
+    auprc_mac = metrics.average_precision_score(val_df_y_np, val_y_pred)
+    auprc_w = metrics.average_precision_score(val_df_y_np, val_y_pred, average='weighted')
     print(roc_auc_score_w)
     y_pred_04 = (val_y_pred > 0.4).astype(int)
     y_pred_05 = (val_y_pred > 0.5).astype(int)
@@ -69,6 +71,8 @@ def run_validation(node, solution_dict, features):
     
     val_stats = {'ROC AUC': float(roc_auc_score_mac),
         'ROC AUC W': float(roc_auc_score_w),
+        'AUPRC': float(auprc_mac),
+        'AUPRC W': float(auprc_w),
         'Accuracy': float(acc), 
         'f1_score': f1_score,
         'f1_score_w_05': f1_score_w_05,
@@ -79,12 +83,12 @@ def run_validation(node, solution_dict, features):
         'precision_score': precision_score,
         'precision_score_w_05': precision_score_w_05,
         'precision_score_w_06': precision_score_w_06,
-        'val_x': len(val_df)
+        'val_x': len(val_df),
+        'quickness': stats['quickness']
     }
 
-    metric_weights = [('ROC AUC W', 3), ('recall_score_w_06', 3), 
-                      ('ROC AUC', 2), ('f1_score', 2), 
-                      ('recall_score', 2), ('precision_score', 2)]
+    metric_weights = [('ROC AUC W', 4), ('AUPRC', 4), 
+                      ('quickness', 1)]
     w_total = sum([w for m, w in metric_weights])
     val_stats['fitness'] = sum([val_stats[m]*w for m, w in metric_weights]) / w_total
 
@@ -126,14 +130,14 @@ def run_basebenchmark_test(exp):
     }
 
     print('Preparing', exp['name'])
-    params_dict_custom = create_params_for_features(features)
+    params_dict_custom = create_params_for_features(features, convert_plm_dims=True)
     del params_dict_custom['taxa']
     del params_dict_custom['taxa_profile']
     problem_translator = ProblemTranslator(params_dict_custom)
     json.dump(problem_translator.to_dict(), open(local_dir + '/params_dict_custom.json', 'w'), indent=4)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
-    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 150,
-        n_jobs=8, metric_name="f1_score_w_06", metric_name2 = 'precision_score_w_06')
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 20,
+        n_jobs=8, metric_name="fitness", metric_name2 = 'f1_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])
     best_solution, fitness, report = heuristic_model.run_tests(

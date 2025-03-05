@@ -23,6 +23,7 @@ def run_pair_test(exp):
     nodes = exp['nodes']
     node_name = list(nodes.keys())[0]
     node = nodes[node_name]
+    custom_param_bounds = exp['param_bounds']
 
     local_dir = exp['local_dir']
     test_perc = exp['test_perc']
@@ -38,19 +39,22 @@ def run_pair_test(exp):
     }
 
     print('Preparing', exp['name'])
-    params_dict_custom = create_params_for_features(features)
-    del params_dict_custom['taxa']
-    del params_dict_custom['taxa_profile']
+    params_dict_custom = create_params_for_features(features, 
+        bounds=custom_param_bounds, convert_plm_dims=False)
+    #del params_dict_custom['taxa']
+    #del params_dict_custom['taxa_profile']
     problem_translator = ProblemTranslator(params_dict_custom)
-    json.dump(problem_translator.to_dict(), open(local_dir + '/params_dict_custom.json', 'w'), indent=4)
+    json.dump(problem_translator.to_dict(), 
+        open(local_dir + '/params_dict_custom.json', 'w'), 
+        indent=4)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
     
-    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 7,
-        n_jobs=5, metric_name="f1_score_w_06", metric_name2 = 'precision_score_w_06')
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 20,
+        n_jobs=7, metric_name="fitness", metric_name2 = 'f1_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])
     best_solution, fitness, report = heuristic_model.run_tests(
-        runner.objective_func, gens=2, top_perc=0.6, log_dir=local_dir)
+        runner.objective_func, gens=4, top_perc=0.6, log_dir=local_dir)
     solution_dict = problem_translator.decode(best_solution)
     print('Saving', exp['name'])
     meta_report_path = local_dir + '/optimization.txt'
@@ -92,6 +96,8 @@ if __name__ == '__main__':
     if dataset.new_dataset:
         dataset.save(datasets_dir)
 
+    custom_bounds_path = path.dirname(local_dir) + '/good_param_bounds.json'
+
     name = path.basename(local_dir)
     features_to_test = name.split('-')
     experiment = {
@@ -100,7 +106,8 @@ if __name__ == '__main__':
         'features': features_to_test,
         'nodes': dataset.go_clusters,
         'test_perc': test_perc,
-        'local_dir': local_dir
+        'local_dir': local_dir,
+        'param_bounds': json.load(open(custom_bounds_path, 'r'))
     }
 
     result_path = path.dirname(local_dir) + '/'+experiment['feature_combo']+'.json'

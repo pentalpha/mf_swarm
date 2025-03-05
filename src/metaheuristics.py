@@ -19,6 +19,33 @@ from plotting import iterative_gens_draw
 
 param_bounds = json.load(open('config/base_param_bounds_v2.json', 'r'))
 
+def calc_custom_param_bounds(benchmarking_dir, testnames, norm_plm=True):
+    solutions_paths = [(t, benchmarking_dir+'/'+t+'/solution.json') for t in testnames]
+
+    values = {}
+    for t_name, sol_path in solutions_paths:
+        sol_dict = json.load(open(sol_path, 'r'))
+        if norm_plm:
+            sol_dict['plm'] = sol_dict[t_name]
+            del sol_dict[t_name]
+        
+        for key_group, params in sol_dict.items():
+            if not key_group in values:
+                values[key_group] = {}
+            for param_name, param_val in params.items():
+                if not param_name in values[key_group]:
+                    values[key_group][param_name] = []
+                values[key_group][param_name].append(param_val)
+    
+    for key_group, params in values.items():
+        for param_name in params.keys():
+            mi = min(params[param_name])
+            ma = max(params[param_name])
+            min_max_diff = ma-mi
+
+            params[param_name] = [mi - min_max_diff*0.025, ma + min_max_diff*0.025]
+    
+    return values
 
 class RandomSearchMetaheuristic:
     def __init__(self, test_name, param_translator: ProblemTranslator, 
@@ -118,6 +145,10 @@ class RandomSearchMetaheuristic:
                 'population': [{'solution': self.param_translator.decode(sol), 'metrics': metrics}
                                for sol, metrics in zip(self.population, fitness_dicts)]
             }
+            generation_log['population'].sort(
+                key=lambda m: (round(m['metrics'][self.to_optimize], 3), 
+                               m['metrics'][self.to_optimize2]))
+            generation_log['population_best'] = generation_log['population'][-1]
             with open(f"{log_dir}/gen_{gen}_population.json", "w") as f:
                 json.dump(generation_log, f, indent=4)
 

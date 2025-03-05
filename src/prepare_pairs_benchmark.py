@@ -1,6 +1,9 @@
+import json
+from os import path
 import sys
 import pandas as pd
 
+from metaheuristics import calc_custom_param_bounds
 from util_base import run_command
 
 if __name__ == "__main__":
@@ -23,7 +26,7 @@ if __name__ == "__main__":
 
     feature_pairs = set()
 
-    n_top = 2
+    n_top = 5
     models_sorted = performances_df['model'].to_list()
     best_models = models_sorted[:n_top]
     for x in best_models:
@@ -33,6 +36,13 @@ if __name__ == "__main__":
                 feature_pairs.add((first, second))
         if models_sorted[-1] != x:
             feature_pairs.add((x, models_sorted[-1]))
+    
+    all_models_to_use = set(best_models + [models_sorted[-1]])
+    custom_param_bounds = calc_custom_param_bounds(path.dirname(base_benchmark_tsv_path), 
+                                                   all_models_to_use)
+    custom_bounds_path = pair_benchmark_dir + '/good_param_bounds.json'
+    json.dump(custom_param_bounds, open(custom_bounds_path, 'w'), 
+        indent=4)
     print('Pairs to test:')
 
     cmds = ""
