@@ -87,7 +87,7 @@ rule run_pair_tests:
     shell:
         "conda run --live-stream -n mf_swarm_base " + path.abspath(run_pairs_sh)
 
-'''rule summarize_pairs_benchmark:
+rule summarize_pairs_benchmark:
     input:
         'src/summarize_pairs_benchmark.py',
         pairs_benchmark_dir + '/pair_results.json'
@@ -95,5 +95,6 @@ rule run_pair_tests:
         pairs_benchmark_dir + '/benchmark.tsv'
     shell:
         "conda run --live-stream -n plotting"
-            +" python src/summarize_pairs_benchmark.py " 
-            + pairs_benchmark_dir'''
+            +" python src/summarize_pairs_benchmark.py"
+            + " " + base_benchmark_dir
+            + " " + pairs_benchmark_dir

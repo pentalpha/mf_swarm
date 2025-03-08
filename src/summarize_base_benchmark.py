@@ -4,7 +4,9 @@ import sys
 
 import pandas as pd
 
-from plotting import load_final_solutions, plot_final_solution_performance, plot_metrics
+
+from parsing import load_final_solutions
+from plotting import plot_final_solution_performance, plot_metrics
 
 if __name__ == '__main__':
     #benchmark_path = '/home/pita/experiments/base_benchmark_4'
