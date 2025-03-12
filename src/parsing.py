@@ -2,6 +2,7 @@ from glob import glob
 import json
 from os import path
 import pandas as pd
+from tqdm import tqdm
 
 from param_translator import ProblemTranslator
 from util_base import plm_sizes
@@ -95,12 +96,16 @@ def load_final_solutions(benchmark_path):
 
 def load_final_metrics(benchmark_path):
     val_jsons = glob(benchmark_path+'/*.json')
+    print('Loading', benchmark_path)
     solutions = {}
-    for p in val_jsons:
+    for p in tqdm(val_jsons):
         data = json.load(open(p, 'r'))
         if 'validation' in data and 'test' in data and 'go_labels' in data:
             name = path.basename(p).replace('.json', '')
-            solutions[name] = data['validation']
+            params_dict_path = p.replace('.json', '/solution.json')
+            params_dict = json.load(open(params_dict_path, 'r'))
+            solutions[name] = {'solution': params_dict, 
+                               'metrics': data['validation']}
     #vals = [json.load(open(p, 'r'))['validation'] for p in val_jsons]
     #names = [path.basename(p).replace('.json', '') for p in val_jsons]
     

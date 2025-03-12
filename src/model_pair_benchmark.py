@@ -49,7 +49,7 @@ def run_pair_test(exp):
         indent=4)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
     
-    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 20,
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 120,
         n_jobs=7, metric_name="fitness", metric_name2 = 'f1_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])
