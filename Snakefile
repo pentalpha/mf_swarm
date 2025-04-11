@@ -4,6 +4,7 @@ configfile: "config.yml"
 
 base_benchmark_dir = path.expanduser(config['base_benchmark_dir'])
 pairs_benchmark_dir = path.expanduser(config['pairs_benchmark_dir'])
+taxon_benchmark_dir = path.expanduser(config['taxon_benchmark_dir'])
 dimension_db_dir = path.expanduser(config['dimension_db_dir'])
 datasets_dir = path.expanduser(config['datasets_dir'])
 release_n = config['release_n']
@@ -98,3 +99,62 @@ rule summarize_pairs_benchmark:
             +" python src/summarize_pairs_benchmark.py"
             + " " + base_benchmark_dir
             + " " + pairs_benchmark_dir
+
+taxa_benchmark_cmd_base = (
+    "conda run --live-stream -n mf_swarm_base"
+    +" python src/taxa_benchmark.py "+dimension_db_dir
+    +" "+str(release_n)
+    +" "+datasets_dir
+    +" "+str(min_proteins_per_mf)
+    +" "+str(val_perc)
+    +" "+str(real_test_perc)
+    +" "+pairs_benchmark_dir
+    +" "+taxon_benchmark_dir
+)
+
+rule taxa_profile_128:
+    input:
+        pairs_benchmark_dir + '/benchmark.tsv'
+    output:
+        taxon_benchmark_dir+'/taxa_profile_128.json' 
+    shell:
+        taxa_benchmark_cmd_base+" taxa_profile_128"
+
+rule taxa_profile_256:
+    input:
+        pairs_benchmark_dir + '/benchmark.tsv'
+    output:
+        taxon_benchmark_dir+'/taxa_profile_256.json' 
+    shell:
+        taxa_benchmark_cmd_base+" taxa_profile_256"
+
+rule taxa_128:
+    input:
+        pairs_benchmark_dir + '/benchmark.tsv'
+    output:
+        taxon_benchmark_dir+'/taxa_128.json' 
+    shell:
+        taxa_benchmark_cmd_base+" taxa_128"
+
+rule taxa_256:
+    input:
+        pairs_benchmark_dir + '/benchmark.tsv'
+    output:
+        taxon_benchmark_dir+'/taxa_256.json' 
+    shell:
+        taxa_benchmark_cmd_base+" taxa_256"
+
+rule taxa_profile_summarize:
+    input:
+        pairs_benchmark_dir + '/benchmark.tsv',
+        taxon_benchmark_dir+'/taxa_128.json',
+        taxon_benchmark_dir+'/taxa_256.json',
+        taxon_benchmark_dir+'/taxa_profile_256.json',
+        taxon_benchmark_dir+'/taxa_profile_128.json'
+    output:
+        taxon_benchmark_dir+'/benchmark.tsv'
+    shell:
+        "conda run --live-stream -n mf_swarm_base"
+            +" python src/summarize_taxa_benchmark.py"
+            +" "+pairs_benchmark_dir + '/benchmark.tsv'
+            +" "+taxon_benchmark_dir

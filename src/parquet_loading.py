@@ -29,7 +29,7 @@ class VectorLoader:
         """
         return [path.join(self.parquet_directory, f) 
                 for f in listdir(self.parquet_directory) 
-                if f.endswith('.parquet') and 'emb.' in f]
+                if f.endswith('.parquet') and ('emb.' in f or 'onehot.')]
 
     def load_vectors_by_ids(self, ids_to_load: List[str], dataset_names: List[str], 
             remove_na = False):

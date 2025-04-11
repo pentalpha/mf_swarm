@@ -208,10 +208,14 @@ class Dataset:
         traintest_set, val_set, filtered_ann, go_freqs = dimension_db.get_proteins_set(min_proteins_per_mf, val_perc)
 
         max_proteins_traintest = None
-        if dataset_type == 'base_benchmark':
+        if dataset_type == 'base_benchmark' or 'taxon_benchmark':
             go_clusters = Dataset.base_benchmark_goids_clustering(dimension_db, go_freqs)
-            self.datasets_to_load = dimension_db.plm_names
             max_proteins_traintest = 4500
+            if dataset_type == 'base_benchmark':
+                self.datasets_to_load = dimension_db.plm_names
+            else:
+                self.datasets_to_load = dimension_db.plm_names + dimension_db.taxa_onehot_names + dimension_db.taxa_profile_names
+                
         self.dataset_params['datasets_to_load'] = self.datasets_to_load
 
         self.go_clusters = {}

@@ -121,7 +121,7 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     final_params = params_dict['final']
     #print('9')
     final_dim = final_params['final_dim']
-    dropout_rate = final_params['final_dim']
+    #dropout_rate = final_params['final_dim']
     patience = final_params['patience']
     epochs = final_params['epochs']
     learning_rate = final_params['learning_rate']
@@ -134,7 +134,7 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     combined = BatchNormalization(name = 'combined_batchnorm_1')(combined)
     combined = Dense(final_dim, name='combined_dense_1', activation='relu')(combined)
     #print("Dense")
-    output_1 = Dense(train_y.shape[1], activation='sigmoid', name='final_output_123')(combined)
+    output_1 = Dense(train_y.shape[1], activation='sigmoid', name='final_output_sigmoid')(combined)
 
     # Create the model
     #print('Creating Model')
@@ -378,25 +378,35 @@ def create_params_for_features(features, bounds=param_bounds, convert_plm_dims=T
     params_dict = {k: {k2: v2 for k2, v2 in v.items()} for k, v in bounds.items()}
     plm_base_params = params_dict['plm']
     for feature_name in features:
-        feature_len = plm_sizes[feature_name]
-        if convert_plm_dims:
-            params_dict[feature_name] = {
-                "l1_dim": [int(plm_base_params["l1_dim"][0]*feature_len), 
-                            int(plm_base_params["l1_dim"][1]*feature_len)],
-                "l2_dim": [int(plm_base_params["l2_dim"][0]*feature_len), 
-                            int(plm_base_params["l2_dim"][1]*feature_len)],
-                "dropout_rate": plm_base_params['dropout_rate'],
-                "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
+        if feature_name in plm_sizes:
+            feature_len = plm_sizes[feature_name]
+            if convert_plm_dims:
+                params_dict[feature_name] = {
+                    "l1_dim": [int(plm_base_params["l1_dim"][0]*feature_len), 
+                                int(plm_base_params["l1_dim"][1]*feature_len)],
+                    "l2_dim": [int(plm_base_params["l2_dim"][0]*feature_len), 
+                                int(plm_base_params["l2_dim"][1]*feature_len)],
+                    "dropout_rate": plm_base_params['dropout_rate'],
+                    "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
+                }
+            else:
+                params_dict[feature_name] = {
+                    "l1_dim": [int(plm_base_params["l1_dim"][0]), 
+                                int(plm_base_params["l1_dim"][1])],
+                    "l2_dim": [int(plm_base_params["l2_dim"][0]), 
+                                int(plm_base_params["l2_dim"][1])],
+                    "dropout_rate": plm_base_params['dropout_rate'],
+                    "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
             }
-        else:
-            params_dict[feature_name] = {
-                "l1_dim": [int(plm_base_params["l1_dim"][0]), 
-                            int(plm_base_params["l1_dim"][1])],
-                "l2_dim": [int(plm_base_params["l2_dim"][0]), 
-                            int(plm_base_params["l2_dim"][1])],
-                "dropout_rate": plm_base_params['dropout_rate'],
-                "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
-            }
+        elif 'taxa' in feature_name:
+            is_profile = 'profile' in feature_name
+            if is_profile:
+                params_dict[feature_name] = params_dict['taxa_profile']
+            else:
+                params_dict[feature_name] = params_dict['taxa']
+    
+    del params_dict['taxa_profile']
+    del params_dict['taxa']
     del params_dict['plm']
 
     return params_dict
