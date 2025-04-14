@@ -214,7 +214,7 @@ class Dataset:
             if dataset_type == 'base_benchmark':
                 self.datasets_to_load = dimension_db.plm_names
             else:
-                self.datasets_to_load = dimension_db.plm_names + dimension_db.taxa_onehot_names + dimension_db.taxa_profile_names
+                self.datasets_to_load = ['ankh_base', 'prottrans'] + dimension_db.taxa_onehot_names + dimension_db.taxa_profile_names
                 
         self.dataset_params['datasets_to_load'] = self.datasets_to_load
 

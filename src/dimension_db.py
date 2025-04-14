@@ -42,9 +42,9 @@ class DimensionDB:
 
         self.feature_paths = {}
         for n in self.taxa_onehot_names:
-            self.feature_paths[n] = path.join(self.release_dir, 'onehot.' + n + self.emb_extension)
+            self.feature_paths[n] = path.join(self.release_dir, 'onehot.' + n + self.new_emb_extension)
         for n in self.taxa_profile_names:
-            self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + self.emb_extension)
+            self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + self.new_emb_extension)
         for n in self.plm_names:
             self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + self.new_emb_extension)
         for n in self.top_taxa_names:

@@ -52,7 +52,6 @@ run_pairs_sh = pairs_benchmark_dir + '/run_tests.sh'
 
 rule run_first_benchmark:
     input:
-        'src/plotting.py',
         single_model_eval_outputs
     output:
         base_benchmark_dir + '/benchmark.tsv'
@@ -61,7 +60,6 @@ rule run_first_benchmark:
         
 rule prepare_pairs:
     input:
-        'src/prepare_pairs_benchmark.py',
         base_benchmark_dir + '/benchmark.tsv',
         parquet_inputs
     output:
@@ -90,7 +88,6 @@ rule run_pair_tests:
 
 rule summarize_pairs_benchmark:
     input:
-        'src/summarize_pairs_benchmark.py',
         pairs_benchmark_dir + '/pair_results.json'
     output:
         pairs_benchmark_dir + '/benchmark.tsv'
@@ -111,6 +108,14 @@ taxa_benchmark_cmd_base = (
     +" "+pairs_benchmark_dir
     +" "+taxon_benchmark_dir
 )
+
+rule no_taxa_profile:
+    input:
+        pairs_benchmark_dir + '/benchmark.tsv'
+    output:
+        taxon_benchmark_dir+'/None.json' 
+    shell:
+        taxa_benchmark_cmd_base+" None"
 
 rule taxa_profile_128:
     input:
@@ -150,7 +155,8 @@ rule taxa_profile_summarize:
         taxon_benchmark_dir+'/taxa_128.json',
         taxon_benchmark_dir+'/taxa_256.json',
         taxon_benchmark_dir+'/taxa_profile_256.json',
-        taxon_benchmark_dir+'/taxa_profile_128.json'
+        taxon_benchmark_dir+'/taxa_profile_128.json',
+        taxon_benchmark_dir+'/None.json'
     output:
         taxon_benchmark_dir+'/benchmark.tsv'
     shell:

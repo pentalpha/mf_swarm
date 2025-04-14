@@ -79,28 +79,28 @@ if __name__ == '__main__':
 
     for metric_a, metric_b in metric_pairs:
         a = []
-        a_small = []
+        #a_small = []
         b = []
-        b_small = []
+        #b_small = []
         colors_big = []
-        colors_small = []
+        #colors_small = []
         names = []
         for _, row in performances_df.iterrows():
             name = row['model']
             a.append(row[metric_a])
             
             b.append(row[metric_b])
-            colors_big.append(model_colors[name.split('-')[0]])
-            if '-' in name:
+            colors_big.append(model_colors['ankh_base'])
+            '''if '-' in name:
                 a_small.append(row[metric_a])
                 b_small.append(row[metric_b])
-                colors_small.append(model_colors[name.split('-')[1]])
+                colors_small.append(model_colors[name.split('-')[1]])'''
             names.append(name)
 
-        fig, axes = plt.subplots(1, 2, figsize=(13,6.5))
-        ax_main = axes[0]
+        fig, ax_main = plt.subplots(1, 1, figsize=(13,6.5))
+        #ax_main = axes[0]
         ax_main.scatter(a, b, s=170, c=colors_big)
-        ax_main.scatter(a_small, b_small, s=70, c=colors_small)
+        #ax_main.scatter(a_small, b_small, s=70, c=colors_small)
         for i, txt in enumerate(names):
             ax_main.annotate(txt.upper().replace('_', ' ').replace('-', '+'), 
                         (a[i], b[i]), 
@@ -109,7 +109,7 @@ if __name__ == '__main__':
         ax_main.set_ylabel(metric_b)
         ax_main.set_title('M.F. Classification Performance of PLMs')
 
-        ax_zoom = axes[1]
+        '''ax_zoom = axes[1]
         original_x1, original_x2 = ax_main.get_xlim()
         original_y1, original_y2 = ax_main.get_ylim()
 
@@ -168,7 +168,7 @@ if __name__ == '__main__':
 
         rect = Rectangle((new_x1, new_y1), original_x2-new_x1, original_y2-new_y1,
                          facecolor='#00000000', edgecolor='lightblue', fill=False, zorder=-1)
-        ax_main.add_patch(rect)
+        ax_main.add_patch(rect)'''
 
         fig.tight_layout()
         

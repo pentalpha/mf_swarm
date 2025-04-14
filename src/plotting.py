@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from decimal import Decimal
 
-from parsing import load_gens_df, load_final_solutions, load_solutions
+from parsing import load_gens_df, load_final_solutions, load_solutions, load_taxa_solutions
 
 model_colors = {
     'ankh_base': 'red', 'ankh_large': 'darkred', 
@@ -73,6 +73,7 @@ def plot_metrics(benchmark_path, final=True):
         }
         for name, data in solutions.items():
             pop = data['population_best']
+            print(pop[0])
             last_i = len(pop)-1
             for i, p in enumerate(pop):
                 if i == last_i:
@@ -92,6 +93,8 @@ def plot_metrics(benchmark_path, final=True):
     
         plot_path = benchmark_path + '/metric_' + m + '.png'
         fig, ax = plt.subplots(1, 1, figsize=(6,6))
+        #print(metric_vals)
+        #print(roc_auc)
         ax.scatter(metric_vals, roc_auc, s=30, alpha=0.5)
         ax.scatter(metric_vals_best, roc_auc_best, s=120, 
                    alpha=1.0, marker='*')
@@ -149,6 +152,97 @@ def plot_metrics(benchmark_path, final=True):
     fig.tight_layout()
     
     fig.savefig(plot_path, dpi=120)
+
+def plot_taxon_metrics(benchmark_path):
+    solutions = load_taxa_solutions(benchmark_path)
+    param_names =set()
+    for s in list(solutions.keys()):
+        param_names.update(solutions[s]['population_best'][0]['params'].keys())
+    #param_names = solutions[list(solutions.keys())[0]]['population_best'][0]['params'].keys()
+    print("Parameters to plot:", param_names)
+    values = {
+        k: [] for k in param_names
+    }
+    for name, data in solutions.items():
+        pop = data['population_best']
+        print(pop[0])
+        last_i = len(pop)-1
+        for i, p in enumerate(pop):
+            if i == last_i:
+                for m_name, m_value in p['params'].items():
+                    values[m_name].append((p['roc'], m_value, True))
+            else:
+                for m_name, m_value in p['params'].items():
+                    values[m_name].append((p['roc'], m_value, False))
+    
+    for m, vs in values.items():
+        #print(m, vs)
+        roc_auc = [x for x, y, _ in vs]
+        metric_vals = [y for x, y, _ in vs]
+        
+        roc_auc_best = [x for x, y, b in vs if b]
+        metric_vals_best = [y for x, y, b in vs if b]
+    
+        plot_path = benchmark_path + '/metric_' + m + '.png'
+        fig, ax = plt.subplots(1, 1, figsize=(6,6))
+        #print(metric_vals)
+        #print(roc_auc)
+        ax.scatter(metric_vals, roc_auc, s=30, alpha=0.5)
+        ax.scatter(metric_vals_best, roc_auc_best, s=120, 
+                   alpha=1.0, marker='*')
+        #for i, txt in enumerate(names):
+        #    ax.annotate(txt.upper().replace('_', ' '), (precision[i], roc[i]), ha='center', va='bottom')
+        ax.set_xlabel(m)
+        ax.set_ylabel('ROC AUC Weighted')
+        ax.set_title(m + ' x ROC AUC')
+        if 'learning_rate' in m:
+            min_val = min(metric_vals)
+            max_val = max(metric_vals)
+            space = (max_val - min_val) / 4
+            new_tick_vals = [min_val, min_val+space, min_val+space*2, min_val+space*3, max_val]
+            new_ticks = ['%.2E' % Decimal(str(i)) for i in new_tick_vals]
+            #print(new_tick_vals, new_ticks)
+            
+            ax.set_xticks(new_tick_vals, new_ticks)
+        else:
+            pass
+        fig.tight_layout()
+        
+        fig.savefig(plot_path, dpi=120)
+    
+    '''l1dim = values['plm_l1_dim']
+    l2dim = values['plm_l2_dim']
+    assert len(l1dim) == len(l2dim)
+    
+    x = []
+    x_best = []
+    y = []
+    y_best = []
+    s1 = []
+    s_best = []
+    
+    for l1_metrics, l2_metrics in zip(l1dim, l2dim):
+        if l1_metrics[2]:
+            x_best.append(l1_metrics[1])
+            y_best.append(l2_metrics[1])
+            s_best.append(100+l2_metrics[0]*l2_metrics[0]*60)
+        else:
+            x.append(l1_metrics[1])
+            y.append(l2_metrics[1])
+            s1.append(40+l2_metrics[0]*l2_metrics[0]*30)
+    
+    plot_path = benchmark_path + '/l1xl2.png'
+    fig, ax = plt.subplots(1, 1, figsize=(6,6))
+    ax.scatter(x, y, s=s1, alpha=0.5)
+    ax.scatter(x_best, y_best, s=s_best, 
+               alpha=1.0, marker='*')
+    
+    ax.set_xlabel('L1 DIM')
+    ax.set_ylabel('L2 DIM')
+    
+    fig.tight_layout()
+    
+    fig.savefig(plot_path, dpi=120)'''
 
 def plot_final_solution_performance(benchmark_path):
     solutions = load_final_solutions(benchmark_path)

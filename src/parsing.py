@@ -69,6 +69,70 @@ def load_solutions(benchmark_path):
     
     return solutions
 
+def load_taxa_solutions(benchmark_path):
+    val_jsons = glob(benchmark_path+'/*.json')
+    vals = [json.load(open(p, 'r'))['validation'] for p in val_jsons]
+    
+    solution_jsons = [p.replace('.json', '/solution.json') for p in val_jsons]
+    solutions = [json.load(open(p, 'r')) for p in solution_jsons]
+    
+    params_dict_custom = [json.load(open(p.replace('.json', '/params_dict_custom.json'), 'r')) 
+                 for p in val_jsons]
+    solution_translators = [ProblemTranslator(None, raw_values=d) for d in params_dict_custom]
+    
+    names = [path.basename(p).replace('.json', '') for p in val_jsons]
+    
+    solutions = {
+        n: {'solution': s, 'metrics': v, 'translator': st}
+        for v, s, n, st in zip(vals, solutions, names, solution_translators) if n != 'None'
+    }
+    
+    for n, data in solutions.items():
+        if not n in data['solution']:
+            print(n)
+            print(data['solution'])
+            raise Exception('Model not found in solution')
+        
+        taxa_feature_name1 = [k for k in data['solution'].keys() if 'taxa' in k][0]
+        print(taxa_feature_name1)
+        new_s = {}
+        for key, v in data['solution'][taxa_feature_name1].items():
+            new_s[taxa_feature_name1+'_'+key] = v
+        data['solution'] = new_s
+        
+        gen_paths = glob(benchmark_path+'/'+n+'/*_population.json')
+        gens = [json.load(open(p, 'r')) for p in gen_paths]
+        data['population'] = []
+        translator = data['translator']
+        
+        for gen in gens:
+            for p in gen['population']:
+                genes = p['solution']
+                if type(genes) == list:
+                    s = translator.decode(genes)
+                else:
+                    s = genes
+                taxa_feature_name = [k for k in s.keys() if 'taxa' in k][0]
+                other_feature_name = [k for k in s.keys() if not ('taxa' in k)]
+                for key, v in s[taxa_feature_name].items():
+                    s[taxa_feature_name+'_'+key] = v
+                del s[taxa_feature_name]
+                for k in other_feature_name:
+                    del s[k]
+                
+                precision = p['metrics']['precision_score_w_05']
+                roc = p['metrics']['ROC AUC W']
+                
+                data['population'].append({'params': s, 
+                                           'precision': precision, 'roc': roc})
+                #print(data['population'][-1])
+        
+        data['population'].sort(key = lambda p: p['roc'])
+        data['population_best'] = data['population'][-32:]
+        
+    
+    return solutions
+
 def load_final_solutions(benchmark_path):
     val_jsons = glob(benchmark_path+'/*.json')
     vals = [json.load(open(p, 'r'))['validation'] for p in val_jsons]

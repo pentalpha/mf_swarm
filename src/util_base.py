@@ -15,7 +15,9 @@ plm_sizes = {
     'esm2_t6': 320, 'esm2_t12': 480, 
     'esm2_t30': 640, 'esm2_t33': 1280, 
     'esm2_t36': 2560, 
-    'prottrans': 1024
+    'prottrans': 1024,
+    'taxa_profile_128': 128, 'taxa_profile_256': 256,
+    'taxa_128': 128, 'taxa_256': 256
 }
 
 def run_command(cmd_vec, stdin="", no_output=True):

@@ -15,7 +15,7 @@ class VectorLoader:
         """
         self.parquet_directory = path.expanduser(parquet_directory)
         file_list = self._get_parquet_files()
-        file_names = [path.basename(x).replace('.parquet', '').replace('emb.', '')
+        file_names = [path.basename(x).replace('.parquet', '').replace('emb.', '').replace('onehot.', '')
                       for x in file_list]
         self.parquets = {n: f for n, f in zip(file_names, file_list)}
         print('Parquet datasets found:')
@@ -29,27 +29,43 @@ class VectorLoader:
         """
         return [path.join(self.parquet_directory, f) 
                 for f in listdir(self.parquet_directory) 
-                if f.endswith('.parquet') and ('emb.' in f or 'onehot.')]
+                if f.endswith('.parquet') and ('emb.' in f or 'onehot.' in f)]
 
     def load_vectors_by_ids(self, ids_to_load: List[str], dataset_names: List[str], 
             remove_na = False):
         if len(dataset_names) == 0:
             dataset_names = sorted(self.parquets.keys())
         loaded_data = []
-        ids = None
-        ids_str = ""
+        #ids = None
+        #ids_str = ""
         print('Scanning features')
+        if any([not (name in self.parquets) for name in dataset_names]):
+            print('Missing features:', [name for name in dataset_names if name not in self.parquets])
+            print('Available features:', self.parquets.keys())
+            raise Exception("Missing features")
+        
+        id_to_index = {id: i for i, id in enumerate(ids_to_load)}
+
         for name in tqdm(dataset_names):
-            #print('Loading', name)
+            print('Scanning', name)
             p = self.parquets[name]
             q = (
                 pl.scan_parquet(p).filter(pl.col('id').is_in(ids_to_load))
             )
-
+            print('Collecting', name)
             new_df = q.collect()
-            loaded_embs = new_df['emb'].to_numpy()
+            print('Collected', name)
+            loaded_embs = new_df['emb'].to_list()
+            emb_width = len(loaded_embs[0])
+            ids = new_df['id'].to_list()
+            embs_sorted = [np.nan * emb_width] * len(ids_to_load)
+            print('Sorting', name)
+            for uniprot_id, emb in zip(ids, loaded_embs):
+                embs_sorted[id_to_index[uniprot_id]] = emb
+            print('Sorted', name)
+            loaded_data.append(embs_sorted)
             #print(new_df)
-            loaded_data.append(loaded_embs)
+            '''loaded_data.append(loaded_embs)
 
             if ids == None:
                 ids = new_df['id'].to_list()
@@ -61,27 +77,30 @@ class VectorLoader:
                     ids = new_ids
                 else:
                     raise Exception("Difference in IDs between " 
-                        + name + " and " + dataset_names[0])
+                        + name + " and " + dataset_names[0])'''
         
         if remove_na:
             na_indexes = set()
-            for index, protein_id in enumerate(ids):
+            for index, protein_id in enumerate(ids_to_load):
                 for vec in loaded_data:
                     emb = vec[index]
                     if np.isnan(emb).any():
                         na_indexes.add(index)
                         break
+            print(len(na_indexes), 'rows with nan values in total of', len(ids_to_load), 'rows')
             
             if len(na_indexes) > 0:
                 print('Found', len(na_indexes), 'nan values')
-                mask = [i for i in range(len(ids)) if not i in na_indexes]
-                ids = [ids[i] for i in mask]
+                mask = [i for i in range(len(ids_to_load)) if not i in na_indexes]
+                ids_to_load = [ids_to_load[i] for i in mask]
                 for dataset_n, dataset in enumerate(loaded_data):
                     loaded_data[dataset_n] = [dataset[i] for i in mask]
 
-        new_df_dict = {'id': ids}
+        new_df_dict = {'id': ids_to_load}
+        print('Converting to numpy arrays')
         for n, d in zip(dataset_names, loaded_data):
-            new_df_dict[n] = d
+            new_df_dict[n] = np.asarray([np.array(e) for e in d])
+        print('Converted to numpy arrays')
         new_df = pl.DataFrame(new_df_dict)
 
         return new_df

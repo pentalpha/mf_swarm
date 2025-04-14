@@ -378,7 +378,13 @@ def create_params_for_features(features, bounds=param_bounds, convert_plm_dims=T
     params_dict = {k: {k2: v2 for k2, v2 in v.items()} for k, v in bounds.items()}
     plm_base_params = params_dict['plm']
     for feature_name in features:
-        if feature_name in plm_sizes:
+        if 'taxa' in feature_name:
+            is_profile = 'profile' in feature_name
+            if is_profile:
+                params_dict[feature_name] = params_dict['taxa_profile']
+            else:
+                params_dict[feature_name] = params_dict['taxa']
+        elif feature_name in plm_sizes:
             feature_len = plm_sizes[feature_name]
             if convert_plm_dims:
                 params_dict[feature_name] = {
@@ -398,12 +404,6 @@ def create_params_for_features(features, bounds=param_bounds, convert_plm_dims=T
                     "dropout_rate": plm_base_params['dropout_rate'],
                     "leakyrelu_1_alpha": plm_base_params['leakyrelu_1_alpha']
             }
-        elif 'taxa' in feature_name:
-            is_profile = 'profile' in feature_name
-            if is_profile:
-                params_dict[feature_name] = params_dict['taxa_profile']
-            else:
-                params_dict[feature_name] = params_dict['taxa']
     
     del params_dict['taxa_profile']
     del params_dict['taxa']

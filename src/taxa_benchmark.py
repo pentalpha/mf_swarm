@@ -43,18 +43,21 @@ def run_taxa_test(exp):
         bounds=custom_param_bounds, convert_plm_dims=False)
     #del params_dict_custom['taxa']
     #del params_dict_custom['taxa_profile']
+    json.dump(params_dict_custom, 
+        open(local_dir + '/params_dict_custom_raw.json', 'w'), 
+        indent=4)
     problem_translator = ProblemTranslator(params_dict_custom)
     json.dump(problem_translator.to_dict(), 
         open(local_dir + '/params_dict_custom.json', 'w'), 
         indent=4)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
     
-    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 8,
-        n_jobs=7, metric_name="fitness", metric_name2 = 'f1_score_w_06')
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 120,
+        n_jobs=6, metric_name="fitness", metric_name2 = 'f1_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])
     best_solution, fitness, report = heuristic_model.run_tests(
-        runner.objective_func, gens=2, top_perc=0.6, log_dir=local_dir)
+        runner.objective_func, gens=4, top_perc=0.6, log_dir=local_dir)
     solution_dict = problem_translator.decode(best_solution)
     print('Saving', exp['name'])
     meta_report_path = local_dir + '/optimization.txt'
@@ -89,7 +92,7 @@ if __name__ == '__main__':
     if matching_dataset_path != None:
         dataset = Dataset(dataset_path=matching_dataset_path)
     else:
-        dimension_db = DimensionDB(dimension_db_releases_dir, dimension_db_release_n, new_downloads=False)
+        dimension_db = DimensionDB(dimension_db_releases_dir, dimension_db_release_n, new_downloads=True)
         dataset = Dataset(dimension_db=dimension_db, 
                       min_proteins_per_mf=min_proteins_per_mf, 
                       dataset_type=dataset_type,
@@ -97,11 +100,26 @@ if __name__ == '__main__':
     print('Nodes in dataset:', dataset.go_clusters.keys())
     if dataset.new_dataset:
         dataset.save(datasets_dir)
-
-    top_feature_list = [encoder_name, 'ankh_base', 'prottrans']
+    if encoder_name != 'None':
+        top_feature_list = [encoder_name, 'ankh_base', 'prottrans']
+    else:
+        top_feature_list = ['ankh_base', 'prottrans']
     #get top feature list
     #add current taxa encoder to feature list
     custom_bounds_path = pair_benchmark_dir + '/good_param_bounds.json'
+    bounds_dict = json.load(open(custom_bounds_path, 'r'))
+    bounds_dict["taxa"]={
+        "l1_dim": [100, 240],
+        "l2_dim": [64, 140],
+        "dropout_rate": [0.2, 0.5],
+        "leakyrelu_1_alpha": [0.03, 0.15]
+    }
+    bounds_dict["taxa_profile"]={
+        "l1_dim": [160, 240],
+        "l2_dim": [100, 140],
+        "dropout_rate": [0.2, 0.5],
+        "leakyrelu_1_alpha": [0.03, 0.9]
+    }
     name = path.basename(local_dir)
     experiment = {
         'feature_combo': name,
@@ -110,7 +128,7 @@ if __name__ == '__main__':
         'nodes': dataset.go_clusters,
         'test_perc': test_perc,
         'local_dir': local_dir,
-        'param_bounds': json.load(open(custom_bounds_path, 'r'))
+        'param_bounds': bounds_dict
     }
 
     result_path = path.dirname(local_dir) + '/'+experiment['feature_combo']+'.json'
