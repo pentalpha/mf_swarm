@@ -219,6 +219,8 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
 
     return model, test_stats
 
+
+
 def prepare_data(node_dict, test_perc, max_proteins=60000):
     basename = 'tmp/'+params['cluster_name']
     train_x_name = basename + '.train_x.obj'

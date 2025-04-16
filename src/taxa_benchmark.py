@@ -52,12 +52,12 @@ def run_taxa_test(exp):
         indent=4)
     #meta_test = MetaheuristicTest(name, params_list, features, 11)
     
-    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 120,
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 160,
         n_jobs=6, metric_name="fitness", metric_name2 = 'f1_score_w_06')
     runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
     print('Running', exp['name'])
     best_solution, fitness, report = heuristic_model.run_tests(
-        runner.objective_func, gens=4, top_perc=0.6, log_dir=local_dir)
+        runner.objective_func, gens=5, top_perc=0.6, log_dir=local_dir)
     solution_dict = problem_translator.decode(best_solution)
     print('Saving', exp['name'])
     meta_report_path = local_dir + '/optimization.txt'
@@ -109,14 +109,14 @@ if __name__ == '__main__':
     custom_bounds_path = pair_benchmark_dir + '/good_param_bounds.json'
     bounds_dict = json.load(open(custom_bounds_path, 'r'))
     bounds_dict["taxa"]={
-        "l1_dim": [100, 240],
-        "l2_dim": [64, 140],
+        "l1_dim": [64, 512],
+        "l2_dim": [64, 512],
         "dropout_rate": [0.2, 0.5],
-        "leakyrelu_1_alpha": [0.03, 0.15]
+        "leakyrelu_1_alpha": [0.03, 0.9]
     }
     bounds_dict["taxa_profile"]={
-        "l1_dim": [160, 240],
-        "l2_dim": [100, 140],
+        "l1_dim": [64, 512],
+        "l2_dim": [64, 512],
         "dropout_rate": [0.2, 0.5],
         "leakyrelu_1_alpha": [0.03, 0.9]
     }

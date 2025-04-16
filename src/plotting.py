@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from decimal import Decimal
 
-from parsing import load_gens_df, load_final_solutions, load_solutions, load_taxa_solutions
+from parsing import load_gens_df, load_final_solutions, load_solutions, load_taxa_populations
 
 model_colors = {
     'ankh_base': 'red', 'ankh_large': 'darkred', 
@@ -154,47 +154,63 @@ def plot_metrics(benchmark_path, final=True):
     fig.savefig(plot_path, dpi=120)
 
 def plot_taxon_metrics(benchmark_path):
-    solutions = load_taxa_solutions(benchmark_path)
-    param_names =set()
-    for s in list(solutions.keys()):
-        param_names.update(solutions[s]['population_best'][0]['params'].keys())
+    populations = load_taxa_populations(benchmark_path)
+    param_names = set()
+    for s in list(populations.keys()):
+        print(s)
+        print(len(populations[s]['population']))
+        print(len(populations[s]['population_best']))
+    for s in list(populations.keys()):
+        param_names.update(populations[s]['population'][0]['params'].keys())
     #param_names = solutions[list(solutions.keys())[0]]['population_best'][0]['params'].keys()
     print("Parameters to plot:", param_names)
     values = {
         k: [] for k in param_names
     }
-    for name, data in solutions.items():
-        pop = data['population_best']
+    for name, data in populations.items():
+        pop = data['population']
         print(pop[0])
         last_i = len(pop)-1
+        good_quality_start = len(pop)-32
+        if good_quality_start < 0:
+            good_quality_start = 0
         for i, p in enumerate(pop):
-            if i == last_i:
-                for m_name, m_value in p['params'].items():
-                    values[m_name].append((p['roc'], m_value, True))
+            if not p['is_best']:
+                if i < good_quality_start:
+                    label = 'Bad'
+                else:
+                    label = 'Good'
             else:
-                for m_name, m_value in p['params'].items():
-                    values[m_name].append((p['roc'], m_value, False))
+                label = 'Best'
+            
+            for m_name, m_value in p['params'].items():
+                values[m_name].append((p['auprc'], m_value, label))
     
     for m, vs in values.items():
         #print(m, vs)
-        roc_auc = [x for x, y, _ in vs]
-        metric_vals = [y for x, y, _ in vs]
+
+        roc_auc_bad = [x for x, y, l in vs if l == 'Bad']
+        metric_vals_bad = [y for x, y, l in vs if l == 'Bad']
+
+        roc_auc = [x for x, y, l in vs if l == 'Good']
+        metric_vals = [y for x, y, l in vs if l == 'Good']
         
-        roc_auc_best = [x for x, y, b in vs if b]
-        metric_vals_best = [y for x, y, b in vs if b]
+        roc_auc_best = [x for x, y, l in vs if l == 'Best']
+        metric_vals_best = [y for x, y, l in vs if l == 'Best']
     
         plot_path = benchmark_path + '/metric_' + m + '.png'
         fig, ax = plt.subplots(1, 1, figsize=(6,6))
         #print(metric_vals)
         #print(roc_auc)
-        ax.scatter(metric_vals, roc_auc, s=30, alpha=0.5)
-        ax.scatter(metric_vals_best, roc_auc_best, s=120, 
-                   alpha=1.0, marker='*')
+        ax.scatter(metric_vals_bad, roc_auc_bad, s=10, alpha=0.4, label='Bad')
+        ax.scatter(metric_vals, roc_auc, s=40, alpha=0.6, label='Good')
+        ax.scatter(metric_vals_best, roc_auc_best, s=180, 
+                   alpha=1.0, marker='*', label='Gen. Best')
         #for i, txt in enumerate(names):
         #    ax.annotate(txt.upper().replace('_', ' '), (precision[i], roc[i]), ha='center', va='bottom')
         ax.set_xlabel(m)
-        ax.set_ylabel('ROC AUC Weighted')
-        ax.set_title(m + ' x ROC AUC')
+        ax.set_ylabel('auprc Weighted')
+        ax.set_title(m + ' x auprc')
         if 'learning_rate' in m:
             min_val = min(metric_vals)
             max_val = max(metric_vals)
