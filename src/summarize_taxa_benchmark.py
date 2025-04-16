@@ -13,6 +13,7 @@ from matplotlib.patches import ConnectionPatch, Rectangle
 import matplotlib.patheffects as pe
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.cm import ScalarMappable
+from node_factory import save_classifier_architecture
 from parsing import load_final_metrics, load_final_solutions
 from plotting import model_colors, plot_taxon_metrics
 from util_base import plm_sizes
@@ -94,6 +95,9 @@ if __name__ == '__main__':
     performances.sort(
         key=lambda p: (p['AUPRC Score (W)'], p['ROC AUC Score (W)'], p['AUPRC Score']), 
         reverse=True)
+    
+    top_performance = performances[0]
+
     columns = ['model', 'Type',
         'ROC AUC Score', 'AUPRC Score', 
         'AUPRC Score (W)', 'ROC AUC Score (W)',
@@ -107,6 +111,13 @@ if __name__ == '__main__':
     performances_df = pd.DataFrame(performances)
     performances_df = performances_df[columns]
     performances_df.to_csv(taxa_benchmark_dir + '/benchmark.tsv', sep='\t', index=False)
+
+    performances_df['Models'] = performances_df['model'].apply(lambda txt: txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+'))
+    columns_simple = ['Models', 'Total Feature Length', 'AUPRC Score (W)', 'ROC AUC Score (W)']
+    performances_df_simple = performances_df[columns_simple]
+    performances_df_simple.to_csv(taxa_benchmark_dir + '/benchmark_simple.tsv', sep='\t', index=False)
+
+    save_classifier_architecture(json.loads(top_performance['Metaparameters']), taxa_benchmark_dir)
 
     metric_pairs = [('AUPRC Score (W)', 'ROC AUC Score (W)'), 
                     ('AUPRC Score', 'ROC AUC Score'),
@@ -174,15 +185,15 @@ if __name__ == '__main__':
                     txt = txt.replace('taxa', 'taxa_onehot')
                 '''if 'taxa' in txt:
                     txt = 'ankh_base-prottrans-\n'+txt'''
-                ax_main.annotate(txt.upper().replace('_', ' ').replace('-', '+'), 
+                ax_main.annotate(txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+'), 
                             (a[i], b[i]), 
                             ha='center', va='bottom', fontsize=8, alpha=0.9)
-                new_txt = txt.upper().replace('_', ' ').replace('-', '+')
+                new_txt = txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+')
                 va2 = 'bottom'
                 vertical_diff=0
                 if new_txt == 'ANKH LARGE':
                     va2 = 'top'
-                if new_txt == 'ESM2 T33+PROTTRANS':
+                if new_txt == 'ESM2 T33+PROTT5':
                     va2 = 'top'
                 axin2.annotate(new_txt, 
                             (a[i], b[i]+vertical_diff), 

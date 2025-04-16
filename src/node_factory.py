@@ -80,6 +80,90 @@ def x_to_np(x):
         #print(feature_name, x[i][1].shape)
     return x
 
+def save_classifier_architecture(params_dict: dict, output_dir: str, n_classes: int =  72):
+
+    keras_inputs = []
+    keras_input_networks = []
+
+    feature_names = [f for f, p in params_dict.items() if f in plm_sizes]
+
+    for feature_name in feature_names:
+        feature_len = plm_sizes[feature_name]
+        feature_params = params_dict[feature_name]
+        #print('Trying', feature_vec.shape, feature_name, feature_params)
+        start_dim = feature_params['l1_dim']
+        end_dim = feature_params['l2_dim']
+        leakyrelu_1_alpha = feature_params['leakyrelu_1_alpha']
+        dropout_rate = feature_params['dropout_rate']
+        #print('1')
+        input_start = Input(shape=(feature_len,))
+
+        #print('2')
+        input_network = Dense(start_dim, name=feature_name+'_dense_1')(input_start)
+        #print('3')
+        input_network = BatchNormalization(name=feature_name+'_batchnorm_1')(input_network)
+        #print('4')
+        input_network = LeakyReLU(negative_slope=leakyrelu_1_alpha, name=feature_name+'_leakyrelu_1')(input_network)
+        
+        #print('4.5')
+        input_network = Dropout(dropout_rate, name=feature_name+'_dropout_1')(input_network)
+        #print('5')
+        input_network = Dense(end_dim, name=feature_name+'_dense_2')(input_network)
+        #print('6')
+
+        keras_inputs.append(input_start)
+        #print('7')
+        keras_input_networks.append(input_network)
+        #print('8')
+    
+    final_params = params_dict['final']
+    #print('9')
+    final_dim = final_params['final_dim']
+    #dropout_rate = final_params['final_dim']
+    patience = final_params['patience']
+    epochs = final_params['epochs']
+    learning_rate = final_params['learning_rate']
+    batch_size = final_params['batch_size']
+
+    #print("Concatenate the networks")
+    combined = Concatenate()(keras_input_networks)
+    #combined = LeakyReLU(alpha=0.1, name='combined_leakyrelu_1')(combined)
+    #print("BatchNormalization")
+    combined = BatchNormalization(name = 'combined_batchnorm_1')(combined)
+    combined = Dense(final_dim, name='combined_dense_1', activation='relu')(combined)
+    #print("Dense")
+    output_1 = Dense(n_classes, activation='sigmoid', name='final_output_sigmoid')(combined)
+
+    # Create the model
+    #print('Creating Model')
+    model = Model(inputs=keras_inputs,
+        outputs=output_1)
+
+    '''from keras.utils import plot_model
+    plot_model(model, to_file=output_dir+'model1.png', show_shapes=True, show_layer_names=True, dpi=800)
+    plot_model(
+        model.build_graph(),                      # here is the trick (for now)
+        to_file=output_dir+'/model2.png', dpi=800,              # saving  
+        show_shapes=True, 
+        show_layer_names=True,  # show shapes and layer name
+        expand_nested=False                       # will show nested block
+    )
+    plot_model(model, to_file=output_dir+'model1.svg', show_shapes=True, show_layer_names=True)
+    plot_model(
+        model.build_graph(),                      # here is the trick (for now)
+        to_file=output_dir+'/model2.svg',              # saving  
+        show_shapes=True, 
+        show_layer_names=True,  # show shapes and layer name
+        expand_nested=False                       # will show nested block
+    )'''
+
+    #print("Compiling")
+    model.compile(optimizer=Adam(learning_rate=learning_rate),
+        loss = 'binary_crossentropy',
+        metrics=['binary_accuracy', keras.metrics.AUC()])
+    model.save(output_dir+'/top_model.keras')
+    return model
+
 def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     
     #print('go labels', train_y.shape)
