@@ -215,7 +215,9 @@ class Dataset:
                 self.datasets_to_load = dimension_db.plm_names
             else:
                 self.datasets_to_load = ['ankh_base', 'prottrans'] + dimension_db.taxa_onehot_names + dimension_db.taxa_profile_names
-                
+        elif dataset_type == "full":
+            go_clusters = Dataset.full_mf_goids_clustering(dimension_db, go_freqs, len(traintest_set))
+            self.datasets_to_load = ['taxa_256', 'ankh_base', 'prottrans']
         self.dataset_params['datasets_to_load'] = self.datasets_to_load
 
         self.go_clusters = {}
@@ -290,6 +292,101 @@ class Dataset:
             cluster_name = ('Level-'+str(l)+'_Freq-'+str(last_min_freq)+'-'
                     +str(max_freq)+'_N-'+str(len(worst_gos)))
             clusters[cluster_name] = worst_gos'''
+        
+        return clusters
+
+    def full_mf_goids_clustering_level_iteration(level, goids, go_freqs, 
+            test_nodes, n_proteins, percentiles, only_test_nodes=False):
+        level_go_freqs = [(go, go_freqs[go]) for go in goids 
+            if (go_freqs[go] / n_proteins) < 0.9]
+        level_go_freqs.sort(key=lambda tp: tp[1])
+        
+        #print('Counting percentiles')
+        perc_index = []
+        last_index = -1
+        for perc in percentiles:
+            index = int(len(level_go_freqs)*(perc/100))
+            perc_index.append((last_index+1, index))
+            last_index = index 
+        perc_index.append((last_index+1, len(level_go_freqs)-1))   
+        #print(perc_index)
+        
+        total_len = 0
+        last_cluster_name = None
+        to_use = test_nodes[level] if level in test_nodes else []
+        
+        current_percentile = 0
+        to_keep = []
+        level_clusters = {}
+        for start, end in perc_index:
+            sub_gos = level_go_freqs[start:end+1]
+            min_freq = sub_gos[0][1]
+            max_freq = sub_gos[-1][1]
+            #print(len(sub_gos))
+            total_len += len(sub_gos)
+            cluster_goids = [x for x, y in sub_gos]
+            
+            if len(sub_gos) > 2:
+                cluster_name = ('Level-'+str(level)+'_Freq-'+str(min_freq)+'-'
+                    +str(max_freq)+'_N-'+str(len(sub_gos)))
+                if current_percentile in to_use or not only_test_nodes:
+                    to_keep.append(cluster_name)
+                level_clusters[cluster_name] = cluster_goids
+                #print(cluster_name.split('_'))
+            else:
+                last_cluster = level_clusters[last_cluster_name]
+                level_str, freq_str, n_str = last_cluster_name.split('_')
+                _, last_min_str, _ = freq_str.split('-')
+                last_min_freq = int(last_min_str)
+                new_cluster = last_cluster + cluster_goids
+                cluster_name = ('Level-'+str(level)+'_Freq-'+str(last_min_freq)+'-'
+                    +str(max_freq)+'_N-'+str(len(new_cluster)))
+                if current_percentile in to_use or not only_test_nodes:
+                    to_keep.append(cluster_name)
+                level_clusters[cluster_name] = new_cluster
+                del level_clusters[last_cluster_name]
+                #print(cluster_name.split('_'))
+            last_cluster_name = cluster_name
+            current_percentile += 1
+        
+        return level_clusters, to_keep
+        
+
+    def full_mf_goids_clustering(dimension_db, go_freqs, n_proteins, 
+            percentiles = [40, 70, 90], is_test=False):
+        go_graph = obonet.read_obo(dimension_db.go_basic_path)
+        all_goids = list(go_freqs.keys())
+        valid_goids = [x for x in all_goids if x in go_graph]
+        valid_goids.sort(key=lambda goid: go_freqs[goid])
+
+        root = 'GO:0003674'
+        go_levels_2 = {}
+        print('Finding paths from MF terms to MF Root')
+        for goid in tqdm(valid_goids):
+            if goid != root:
+                simple_paths = nx.all_simple_paths(go_graph, source=goid, target=root)
+                simple_path_lens = [len(p) for p in simple_paths]
+                try:
+                    mean_dist = floor(np.mean(simple_path_lens)-1)
+                    go_levels_2[goid] = min(7, mean_dist)
+                except ValueError as err:
+                    print(simple_path_lens)
+                    print('No path from', goid, 'to', root)
+                    print(err)
+                    raise(err)
+        
+        levels = {l: [] for l in set(go_levels_2.values())}
+        for goid, level in go_levels_2.items():
+            levels[level].append(goid)
+        del go_levels_2
+
+        clusters = {}
+        test_nodes = {4: [0], 5: [0], 6: [0, 1], 7: [0, 1, 2]}
+        for level_name, goids in levels.items():
+            new_clusters, new_to_keep = Dataset.full_mf_goids_clustering_level_iteration(level_name, goids, go_freqs, 
+                test_nodes, n_proteins, percentiles, only_test_nodes=is_test)
+            for n in new_to_keep:
+                clusters[n] = new_clusters[n]
         
         return clusters
     
