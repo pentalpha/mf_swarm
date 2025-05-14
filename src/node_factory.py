@@ -2,6 +2,7 @@
 import json
 import os
 from os import path
+import random
 import sys
 import polars as pl
 import numpy as np
@@ -71,6 +72,21 @@ def split_train_test_polars(traintest: pl.DataFrame, perc, seed=1337):
     test_y = test.select('labels')
 
     return train_ids, train_x, train_y, test_ids, test_x, test_y
+
+def split_into_n_parts(traintest: pl.DataFrame, n_parts: int, seed=1337):
+    """Split a Polars Parquet DataFrame into N parts"""
+    traintest_ids = traintest['id'].to_list()
+    random.shuffle(traintest_ids)
+
+    part_size = len(traintest_ids) // n_parts
+    part_ids = [traintest_ids[i:i+part_size] for i in range(0, len(traintest_ids), part_size)]
+    random.shuffle(part_ids)
+    parts = []
+    for i in range(n_parts):
+        part_ids = part_ids[i]
+        parts.append(traintest.filter(pl.col('id').is_in(part_ids)))
+    
+    return parts
 
 def x_to_np(x):
     #print('Converting features to np')

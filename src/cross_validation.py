@@ -1,11 +1,12 @@
 from os import path
+import sys
 import numpy as np
 from pickle import load, dump
 
 from util_base import concat_lists, run_command
 from parquet_loading import load_columns_from_parquet
-from node_factory import makeMultiClassifierModel, split_train_test_polars
-
+from node_factory import makeMultiClassifierModel, split_into_n_parts, split_train_test_polars
+import polars as pl
 class BasicEnsemble():
     def __init__(self, model_list) -> None:
         self.models = model_list
@@ -44,16 +45,25 @@ def split_train_test_n_folds(traintest_path, features, n_folds, max_proteins=600
         run_command(['mkdir -p', base_dir])
         cols_to_use = ['id'] + features + ['labels']
         traintest = load_columns_from_parquet(traintest_path, cols_to_use)
+        if len(traintest) > max_proteins:
+            print(traintest_path, 'is too large, sampling down')
+            traintest = traintest.sample(fraction=(max_proteins/len(traintest)), 
+                shuffle=True, seed=1337+int(fold_i))
+        print('Creating random splits', file=sys.stderr)
+        traintest_parts = split_into_n_parts(traintest, n_folds, seed=1337)
+        print('Using splits to create train/test folds', file=sys.stderr)
         for fold_i, fold_parts_dict in folds.items():
-            if len(traintest) > max_proteins:
-                print(traintest_path, 'is too large, sampling down')
-                traintest_local = traintest.sample(fraction=(max_proteins/len(traintest)), 
-                    shuffle=True, seed=1337+int(fold_i))
-            else:
-                traintest_local = traintest
+            train_parts = [part for i, part in enumerate(traintest_parts) if i != int(fold_i)]
+            test = traintest_parts[int(fold_i)]
+            train = pl.concat(train_parts)
         
-            splited = split_train_test_polars(traintest_local, test_perc, seed=1337+int(fold_i))
-            train_ids, train_x, train_y, test_ids, test_x, test_y = splited
+            feature_columns = [c for c in train.columns if c != 'labels' and c != 'id']
+            train_ids = train['id'].to_list()
+            train_x = train.select(feature_columns)
+            train_y = train.select('labels')
+            test_ids = test['id'].to_list()
+            test_x = test.select(feature_columns)
+            test_y = test.select('labels')
 
             train_x_np = []
             for col in train_x.columns:
@@ -118,17 +128,18 @@ def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins
     return annot_model, stats
 
 class CrossValRunner():
-    def __init__(self, param_translator, node, features):
+    def __init__(self, param_translator, node, features, n_folds):
         self.new_param_translator = param_translator
         self.node = node
         self.features = features
+        self.n_folds = n_folds
         
     def objective_func(self, solution):
         #print('objective_func', file=sys.stderr)
         new_params_dict = self.new_param_translator.decode(solution)
         self.node['params_dict'] = new_params_dict
         #print('getting roc_auc s', file=sys.stderr)
-        model_obj, metrics = train_crossval_node(self.node, self.features)
+        model_obj, metrics = train_crossval_node(self.node, self.features, n_folds=self.n_folds)
         print(metrics)
         #print(roc_aucs, file=sys.stderr)
         #print('objective_func finish', file=sys.stderr)

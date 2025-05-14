@@ -6,6 +6,7 @@ __pycache__/
 # C extensions
 *.so
 up.sh
+test/*
 
 # Distribution / packaging
 .Python
