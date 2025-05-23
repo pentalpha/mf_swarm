@@ -19,6 +19,7 @@ from util_base import concat_lists, create_go_labels, run_command
 
 dataset_types = {
     'base_benchmark',
+    'taxon_benchmark',
     'cell_location',
     'full_swarm',
     'small_swarm'
@@ -215,7 +216,7 @@ class Dataset:
                 self.datasets_to_load = dimension_db.plm_names
             else:
                 self.datasets_to_load = ['ankh_base', 'prottrans'] + dimension_db.taxa_onehot_names + dimension_db.taxa_profile_names
-        elif dataset_type == "full":
+        elif dataset_type == "full_swarm":
             go_clusters = Dataset.full_mf_goids_clustering(dimension_db, go_freqs, len(traintest_set))
             self.datasets_to_load = ['taxa_256', 'ankh_base', 'prottrans']
         self.dataset_params['datasets_to_load'] = self.datasets_to_load
