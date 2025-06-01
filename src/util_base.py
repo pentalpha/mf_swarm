@@ -20,6 +20,41 @@ plm_sizes = {
     'taxa_128': 128, 'taxa_256': 256
 }
 
+plm_billion_parameters = {
+    'ankh_base': 0.650, 'ankh_large': 1.80, 
+    'esm2_t6': 0.008, 'esm2_t12': 0.035, 
+    'esm2_t30': 0.150, 'esm2_t33': 0.650, 
+    'esm2_t36': 3, 
+    'prottrans': 3,
+    'taxa_profile_128': 0, 'taxa_profile_256': 0,
+    'taxa_128': 0, 'taxa_256': 0
+}
+
+def calc_n_params(metaparameters_dict: dict, n_classes: int = 72):
+    '''Calcula o número de parâmetros para um modelo, baseado em seus metaparametros'''
+    
+    input_models_parameters = []
+    for key in plm_billion_parameters.keys():
+        if key in metaparameters_dict:
+            input_models_parameters.append(plm_billion_parameters[key]*1000000000)
+    
+    model_params = 0
+    concat_len = 0
+    for param in metaparameters_dict.keys():
+        if param in plm_billion_parameters:
+            l0 = plm_sizes[param]
+            l1 = metaparameters_dict[param]["l1_dim"]
+            l2 = metaparameters_dict[param]["l2_dim"]
+            concat_len += l2
+
+            module_params = l0 * l1 + l1*l2
+            model_params += module_params
+    
+    l3 = metaparameters_dict['final']['final_dim']
+    model_params += concat_len*l3 + l3*n_classes
+
+    return model_params, input_models_parameters
+
 def run_command(cmd_vec, stdin="", no_output=True):
     '''Executa um comando no shell e retorna a saída (stdout) dele.'''
     cmd_vec = " ".join(cmd_vec)

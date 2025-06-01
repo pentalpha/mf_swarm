@@ -13,10 +13,11 @@ from matplotlib.patches import ConnectionPatch, Rectangle
 import matplotlib.patheffects as pe
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.cm import ScalarMappable
+import matplotlib.patheffects as pe
 from node_factory import save_classifier_architecture
 from parsing import load_final_metrics, load_final_solutions
 from plotting import model_colors, plot_taxon_metrics
-from util_base import plm_sizes
+from util_base import calc_n_params, plm_sizes
 from tqdm import tqdm
 
 #Equivalent to summarize_pairs_benchmark.py, but for taxa benchmark + the final table from pairs benchmark
@@ -65,6 +66,14 @@ if __name__ == '__main__':
                 new_perf = {'model': name}
                 for m, m2 in zip(metrics_to_use, metric_pretty_names):
                     new_perf[m2] = round(v['metrics'][m], 4)
+
+                for key in v['solution']:
+                    v['solution'][key.strip('"')] = v['solution'][key]
+                n_parameters, input_model_parameters = calc_n_params(v['solution'])
+                new_perf['Classifier Parameters'] = n_parameters / 1000000
+                new_perf['Input Model Parameters'] = sum(input_model_parameters) / 1000000
+                new_perf['Total Parameters'] = (n_parameters + sum(input_model_parameters)) / 1000000
+
                 new_perf['Metaparameters'] = json.dumps(v['solution'])
                 tp = 'TAXON + ANKH-BASE + PROTTRANS' if 'taxa' in name else 'PLM + PLM'
                 if not '-' in name and not 'taxa' in name:
@@ -99,27 +108,38 @@ if __name__ == '__main__':
     top_performance = performances[0]
 
     columns = ['model', 'Type',
-        'ROC AUC Score', 'AUPRC Score', 
         'AUPRC Score (W)', 'ROC AUC Score (W)',
+        'F1 Score (W)', 'Total Feature Length',
+        'Classifier Parameters', 'Input Model Parameters', 'Total Parameters',
+        'ROC AUC Score', 'AUPRC Score', 
         'WORST AUPRC Score (W)', 'BEST AUPRC Score (W)', 
         'WORST ROC AUC Score (W)', 'BEST ROC AUC Score (W)',
         'WORST AUPRC Score', 'BEST AUPRC Score', 
         'WORST ROC AUC Score', 'BEST ROC AUC Score',
-        'Quickness', 'Total Feature Length',
-        'F1 Score (W)', 'Precision Score (W)', 'Recall Score', 'Binary Accuracy',
+        'Quickness', 'Precision Score (W)', 'Recall Score', 'Binary Accuracy',
         'Fitness', 'Metaparameters']
     performances_df = pd.DataFrame(performances)
     performances_df = performances_df[columns]
     performances_df.to_csv(taxa_benchmark_dir + '/benchmark.tsv', sep='\t', index=False)
 
-    performances_df['Models'] = performances_df['model'].apply(lambda txt: txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+'))
-    columns_simple = ['Models', 'Total Feature Length', 'AUPRC Score (W)', 'ROC AUC Score (W)']
+    performances_df = performances_df[~performances_df['model'].str.contains('profile')]
+
+    performances_df['Models'] = performances_df['model'].apply(
+        lambda txt: txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+'))
+    columns_simple = ['Models', 'Total Feature Length', 'Classifier Parameters', 'AUPRC Score (W)', 
+                      'ROC AUC Score (W)', 'F1 Score (W)', 'Input Model Parameters']
     performances_df_simple = performances_df[columns_simple]
     performances_df_simple.to_csv(taxa_benchmark_dir + '/benchmark_simple.tsv', sep='\t', index=False)
 
     save_classifier_architecture(json.loads(top_performance['Metaparameters']), taxa_benchmark_dir)
 
-    metric_pairs = [('AUPRC Score (W)', 'ROC AUC Score (W)'), 
+    metric_pairs = [('Classifier Parameters', 'AUPRC Score (W)'),
+                    ('Input Model Parameters', 'AUPRC Score (W)'),
+                    ('Total Parameters', 'AUPRC Score (W)'),
+                    ('Classifier Parameters', 'ROC AUC Score (W)'),
+                    ('Input Model Parameters', 'ROC AUC Score (W)'),
+                    ('Total Parameters', 'ROC AUC Score (W)'),
+                    ('AUPRC Score (W)', 'ROC AUC Score (W)'),
                     ('AUPRC Score', 'ROC AUC Score'),
                     ('BEST AUPRC Score (W)', 'WORST AUPRC Score (W)'),
                     ('BEST AUPRC Score', 'WORST AUPRC Score')]
@@ -145,9 +165,11 @@ if __name__ == '__main__':
     marker_range = 360
 
     for metric_a, metric_b in metric_pairs:
-        fig, ax_main = plt.subplots(1, 1, figsize=(13,6.5))
-        axin2 = ax_main.inset_axes([0.62, 0.02, 0.37, 0.4], 
-            xlim=(0.7695, 0.7809), ylim=(0.885,0.892), xticklabels=[], yticklabels=[])
+        make_inset = 'Score' in metric_a and 'Score' in metric_b
+        fig, ax_main = plt.subplots(1, 1, figsize=(10,6))
+        if make_inset:
+            axin2 = ax_main.inset_axes([0.62, 0.02, 0.37, 0.4], 
+                xlim=(0.7695, 0.7809), ylim=(0.885,0.892), xticklabels=[], yticklabels=[])
         #axin2 = zoomed_inset_axes(ax_main, loc='lower right')
         for tp, color_name in type_to_color.items():
             a = []
@@ -172,13 +194,14 @@ if __name__ == '__main__':
                         colors_small.append(model_colors[name.split('-')[1]])'''
                     feature_len = (row['Total Feature Length'] - min_feature_len) / feature_len_range
                     #sizes.append(int(min_marker_size + feature_len*marker_range))
-                    sizes.append(200)
+                    sizes.append(300)
                     names.append(name)
 
         
             #ax_main = axes[0]
             ax_main.scatter(a, b, s=sizes, c=colors_big, label=tp, cmap=cmap, marker=type_to_marker[tp], norm=norm)
-            axin2.scatter(a, b, s=sizes, c=colors_big, label=tp, cmap=cmap, marker=type_to_marker[tp], norm=norm)
+            if make_inset:
+                axin2.scatter(a, b, s=sizes, c=colors_big, label=tp, cmap=cmap, marker=type_to_marker[tp], norm=norm)
             #ax_main.scatter(a_small, b_small, s=70, c=colors_small)
             for i, txt in enumerate(names):
                 if 'taxa' in txt and not 'profile' in txt:
@@ -187,7 +210,8 @@ if __name__ == '__main__':
                     txt = 'ankh_base-prottrans-\n'+txt'''
                 ax_main.annotate(txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+'), 
                             (a[i], b[i]), 
-                            ha='center', va='bottom', fontsize=8, alpha=0.9)
+                            ha='center', va='bottom', fontsize=9, alpha=1,
+                            path_effects=[pe.withStroke(linewidth=2, foreground="white")])
                 new_txt = txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+')
                 va2 = 'bottom'
                 vertical_diff=0
@@ -195,9 +219,11 @@ if __name__ == '__main__':
                     va2 = 'top'
                 if new_txt == 'ESM2 T33+PROTT5':
                     va2 = 'top'
-                axin2.annotate(new_txt, 
+                if make_inset:
+                    axin2.annotate(new_txt, 
                             (a[i], b[i]+vertical_diff), 
-                            ha='center', va=va2, fontsize=8, alpha=0.9)
+                            ha='center', va=va2, fontsize=9, alpha=1,
+                            path_effects=[pe.withStroke(linewidth=2, foreground="white")])
         ax_main.set_xlabel(metric_a)
         ax_main.set_ylabel(metric_b)
         ax_main.set_title('M.F. Classification Performance Using Different Features')
@@ -212,10 +238,14 @@ if __name__ == '__main__':
         fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), 
             ax=ax_main, label="Total Size of Input Features")
 
-        ax_main.indicate_inset_zoom(axin2, edgecolor="black")
+        if make_inset:
+            ax_main.indicate_inset_zoom(axin2, edgecolor="black")
 
         fig.tight_layout()
-        
+        fig.savefig(
+            taxa_benchmark_dir+'/model_performance-'+metric_a+'_'+metric_b+'.svg',
+            dpi=300,
+            format='svg')
         fig.savefig(
             taxa_benchmark_dir+'/model_performance-'+metric_a+'_'+metric_b+'.png',
-            dpi=160)
+            dpi=300)
