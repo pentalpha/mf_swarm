@@ -1,7 +1,10 @@
 
+# Installation
+```
 mamba env crete -f mf_swarm_base.yml
 conda run --live-stream -n mf_swarm_base pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 python src/base_benchmark.py ~/data/dimension_db 1 ~/data/mf_datasets 30 0.1
+```
 
 # Molecular Function Prediction Benchmarking
 
@@ -27,3 +30,6 @@ python src/base_benchmark.py ~/data/dimension_db 1 ~/data/mf_datasets 30 0.1
 |       ESM2 T30       | 640                      | 1.137218                  | 0.7466              | 0.8765                | 0.6967           | 150.0                      |
 |       ESM2 T12       | 480                      | 0.62872                   | 0.739               | 0.8707                | 0.6861           | 35.0                       |
 |        ESM2 T6       | 320                      | 0.438478                  | 0.7162              | 0.8606                | 0.6638           | 8.0                        |
+
+![ROC AUC x AUPRC](img/model_performance-AUPRC%20Score%20(W)_ROC%20AUC%20Score%20(W).png)
+![Total Parameters x AUPRC](img/model_performance-Total%20Parameters_ROC%20AUC%20Score%20(W).png)
