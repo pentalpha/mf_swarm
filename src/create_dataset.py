@@ -39,7 +39,8 @@ def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release
         if all([k in dataset_params for k in ['release_n', 'min_ann', 'val_perc']]):
             if (dataset_params['release_n'] == release_n 
                 and int(dataset_params['min_ann']) == min_proteins_per_mf
-                and dataset_params['val_perc'] == val_perc):
+                and dataset_params['val_perc'] == val_perc
+                and dataset_params['dataset_type'] == dataset_type):
                 matching.append(p)
             else:
                 print('\tvalues not matching')
@@ -206,19 +207,24 @@ class Dataset:
             'dataset_type': dataset_type,
             'dataset_name': self.dataset_name,
             'val_perc': val_perc}
-        traintest_set, val_set, filtered_ann, go_freqs = dimension_db.get_proteins_set(min_proteins_per_mf, val_perc)
+        traintest_set, val_set, filtered_ann, go_freqs = dimension_db.get_proteins_set(
+            min_proteins_per_mf, val_perc)
 
         max_proteins_traintest = None
-        if dataset_type == 'base_benchmark' or 'taxon_benchmark':
+
+        print(self.dataset_params)
+        if dataset_type in ['base_benchmark', 'taxon_benchmark']:
+            print('Dataset.base_benchmark_goids_clustering')
             go_clusters = Dataset.base_benchmark_goids_clustering(dimension_db, go_freqs)
             max_proteins_traintest = 4500
             if dataset_type == 'base_benchmark':
                 self.datasets_to_load = dimension_db.plm_names
             else:
                 self.datasets_to_load = ['ankh_base', 'prottrans'] + dimension_db.taxa_onehot_names + dimension_db.taxa_profile_names
-        elif dataset_type == "full_swarm":
+        elif dataset_type in ["full_swarm", 'small_swarm']:
+            print('Dataset.full_mf_goids_clustering')
             go_clusters = Dataset.full_mf_goids_clustering(dimension_db, go_freqs, len(traintest_set))
-            self.datasets_to_load = ['taxa_256', 'ankh_base', 'prottrans']
+            self.datasets_to_load = ['taxa_256', 'ankh_base', 'esm2_t33']
         self.dataset_params['datasets_to_load'] = self.datasets_to_load
 
         self.go_clusters = {}
@@ -346,6 +352,8 @@ class Dataset:
                     to_keep.append(cluster_name)
                 level_clusters[cluster_name] = new_cluster
                 del level_clusters[last_cluster_name]
+                if last_cluster_name in to_keep:
+                    to_keep.remove(last_cluster_name)
                 #print(cluster_name.split('_'))
             last_cluster_name = cluster_name
             current_percentile += 1
