@@ -57,7 +57,7 @@ def run_optimization(name: str, features: List[str], nodes: dict,
         params_dict = {
             'n_folds': 5,
             'max_proteins': 90000,
-            'problem_translator': problem_translator,
+            'problem_translator': problem_translator.to_dict(),
             'pop_size': 160,
             'n_jobs': 6,
             'metric_name': "fitness",
@@ -70,11 +70,13 @@ def run_optimization(name: str, features: List[str], nodes: dict,
             'node_name': node_name
         }
         param_dicts.append(params_dict)
-    param_dicts.sort(lambda node: len(node['node']['id']))
+    param_dicts.sort(key=lambda node: len(node['node']['id']))
 
     node_experiments = []
     for params_dict in param_dicts:
-        exp_params_path = local_dir + '/' + params_dict['node_name'] + '/exp_params.json'
+        node_dir = local_dir + '/' + params_dict['node_name']
+        run_command(['mkdir -p', node_dir])
+        exp_params_path = node_dir + '/exp_params.json'
         json.dump(params_dict, open(exp_params_path, 'w'), indent=4)
         node_experiments.append(exp_params_path)
 
@@ -87,6 +89,9 @@ def run_optimization(name: str, features: List[str], nodes: dict,
             run_command(['mkdir -p', path.dirname(exp_result)])
             print(' '.join(cmd))
             run_command(cmd)
+        if not path.exists(exp_result):
+            print('Error: Optimization result not found for', node_name)
+            quit(1)
         
         optimizations_done[node_name] = json.load(open(exp_result, 'r'))
 

@@ -83,8 +83,9 @@ def split_into_n_parts(traintest: pl.DataFrame, n_parts: int, seed=1337):
     random.shuffle(part_ids)
     parts = []
     for i in range(n_parts):
-        part_ids = part_ids[i]
-        parts.append(traintest.filter(pl.col('id').is_in(part_ids)))
+        local_part_ids = part_ids[i]
+        #create a new DataFrame for each part, by filtering the 'id' column, which contain part_ids (uniprot ids)
+        parts.append(traintest.filter(pl.col('id').is_in(local_part_ids)))
     
     return parts
 

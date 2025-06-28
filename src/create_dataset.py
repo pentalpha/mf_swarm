@@ -52,7 +52,74 @@ def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release
         return matching[-1]
     else:
         return None
+
+def separate_folds(traintest_df: pl.DataFrame, n_folds: int, cluster_go_proper_order):
+    if n_folds == 1:
+        traintest_df = traintest_df.with_columns(
+            fold_id=pl.lit(0)
+        )
+        return traintest_df, set()
+
+    #separate folds
+    max_tries = 50
+    best_n_gos = 0
+    best_split = None
+    gos_to_remove = set()
+    while max_tries > 0:
+        max_tries -= 1
+        traintest_ids = traintest_df['id'].to_list()
+        random.shuffle(traintest_ids)
+
+        part_size = len(traintest_ids) // n_folds
+        part_ids = [traintest_ids[i:i+part_size] for i in range(0, len(traintest_ids), part_size)]
+        random.shuffle(part_ids)
+
+        parts = [traintest_df.filter(pl.col('id').is_in(local_part_ids)) for local_part_ids in part_ids]
+        constant_labels = set()
+        for part in parts:
+            labels_np = part['labels'].to_numpy()
+            #get vector with sum of values at each collumn in the labels matrix
+            #the number of rows in matrix (nrows)
+            nrows = labels_np.shape[0]
+            labels_sum = np.sum(labels_np, axis=0)
+            non_constant = [s > 0 and s < nrows for s in labels_sum]
+            for go_id, non_constant in zip(cluster_go_proper_order, non_constant):
+                if not non_constant:
+                    constant_labels.add(go_id)
+        if len(constant_labels) == 0:
+            best_split = parts
+            best_n_gos = len(cluster_go_proper_order) - len(constant_labels)
+            print('No constant labels')
+            break
+        else:
+            current_n_gos = len(cluster_go_proper_order) - len(constant_labels)
+            print('Constant labels:', len(constant_labels), 'Non constant:', current_n_gos)
+            if current_n_gos > best_n_gos:
+                best_n_gos = current_n_gos
+                best_split = parts
+                gos_to_remove = constant_labels
+                print('Saved best split')
     
+    if best_split == None:
+        for i in range(len(parts)):
+            parts[i] = parts[i].with_columns(
+                fold_id=pl.lit(i)
+            )
+        df_for_review = pl.concat(parts)
+        open('test/all_constant_labels-go_labels.txt', 'w').write(','.join(cluster_go_proper_order))
+        df_for_review.write_parquet('test/all_constant_labels.parquet')
+        print('Fatal error! Dataset containing only constant labels')
+        quit(1)
+
+    for i in range(len(best_split)):
+        best_split[i] = best_split[i].with_columns(
+            fold_id=pl.lit(i)
+        )
+    
+    traintest_folded = pl.concat(best_split)
+    return traintest_folded, gos_to_remove
+
+
 class Dataset:
     def __init__(self, dataset_path = None, dimension_db: DimensionDB = None, min_proteins_per_mf: int = None, 
             dataset_type: str = None, val_perc: float = None) -> None:
@@ -75,10 +142,57 @@ class Dataset:
         self.go_ids = open(path.join(dataset_path, 'go_ids.txt'), 'r').read().split('\n')
         self.val_perc = self.dataset_params['val_perc']
     
+    def sample_proteins(self, max_proteins_traintest, traintest_ids, cluster_gos,
+            cluster_ann):
+        parts_len = int(len(cluster_gos)/3)
+        first_gos = cluster_gos[:parts_len]
+        middle_gos = cluster_gos[parts_len:parts_len+parts_len]
+        print('Cluster has ', len(cluster_gos), 
+                ' and priority portion has', len(first_gos))
+        #other_gos = cluster_gos[parts_len:]
+
+        print('Sampling proteins for least frequent classes:', first_gos)
+        less_freq_proteins = set()
+        for prot_id in list(traintest_ids):
+            if len(cluster_ann[prot_id].intersection(first_gos)) > 0:
+                traintest_ids.remove(prot_id)
+                less_freq_proteins.add(prot_id)
+        
+        remaining_n = max_proteins_traintest - len(less_freq_proteins)
+        print(len(less_freq_proteins), 'less_freq_proteins')
+        print('collecting more', remaining_n, 'proteins')
+
+        print('Sampling proteins for middle frequent classes:', middle_gos)
+        middle_freq_proteins = set()
+        for prot_id in list(traintest_ids):
+            if len(cluster_ann[prot_id].intersection(middle_gos)) > 0:
+                #traintest_ids.remove(prot_id)
+                middle_freq_proteins.add(prot_id)
+        
+        for_middle = int(remaining_n/2)
+        print(len(middle_freq_proteins), 'middle_freq_proteins')
+        print(for_middle, 'for_middle')
+        if for_middle < len(middle_freq_proteins):
+            middle_ids = random.sample(list(middle_freq_proteins), for_middle)
+        else:
+            middle_ids = middle_freq_proteins
+        traintest_ids = traintest_ids.difference(middle_ids)
+        
+        print('combining lists')
+        remaining_ids = random.sample(list(traintest_ids), 
+            max_proteins_traintest - len(less_freq_proteins) - len(middle_ids))
+        traintest_ids = list(less_freq_proteins) + list(middle_ids) + remaining_ids
+        random.shuffle(traintest_ids)
+
+        assert len(traintest_ids) == max_proteins_traintest, [len(l) for l in [less_freq_proteins, middle_ids, remaining_ids]]
+
+        return traintest_ids
+
     def goids_to_cluster(self, cluster_name, cluster_gos, filtered_ann, 
                          parquet_loader, traintest_set, val_set, tmp_dir,
                          dimension_db,
-                         max_proteins_traintest=None):
+                         max_proteins_traintest=None, 
+                         n_folds=5):
         print('Filtering annotation')
         cluster_ann = {k: v.intersection(cluster_gos) for k, v in filtered_ann.items()}
         cluster_ann = {k: v for k, v in cluster_ann.items() if len(v) > 0}
@@ -91,48 +205,9 @@ class Dataset:
 
         if max_proteins_traintest:
             if len(traintest_ids) > max_proteins_traintest:
-                parts_len = int(len(cluster_gos)/3)
-                first_gos = cluster_gos[:parts_len]
-                middle_gos = cluster_gos[parts_len:parts_len+parts_len]
-                print('Cluster has ', len(cluster_gos), 
-                      ' and priority portion has', len(first_gos))
-                #other_gos = cluster_gos[parts_len:]
-
-                print('Sampling proteins for least frequent classes:', first_gos)
-                less_freq_proteins = set()
-                for prot_id in list(traintest_ids):
-                    if len(cluster_ann[prot_id].intersection(first_gos)) > 0:
-                        traintest_ids.remove(prot_id)
-                        less_freq_proteins.add(prot_id)
-                
-                remaining_n = max_proteins_traintest - len(less_freq_proteins)
-                print(len(less_freq_proteins), 'less_freq_proteins')
-                print('collecting more', remaining_n, 'proteins')
-
-                print('Sampling proteins for middle frequent classes:', middle_gos)
-                middle_freq_proteins = set()
-                for prot_id in list(traintest_ids):
-                    if len(cluster_ann[prot_id].intersection(middle_gos)) > 0:
-                        #traintest_ids.remove(prot_id)
-                        middle_freq_proteins.add(prot_id)
-                
-                for_middle = int(remaining_n/2)
-                print(len(middle_freq_proteins), 'middle_freq_proteins')
-                print(for_middle, 'for_middle')
-                if for_middle < len(middle_freq_proteins):
-                    middle_ids = random.sample(list(middle_freq_proteins), for_middle)
-                else:
-                    middle_ids = middle_freq_proteins
-                traintest_ids = traintest_ids.difference(middle_ids)
-                
-                print('combining lists')
-                remaining_ids = random.sample(list(traintest_ids), 
-                    max_proteins_traintest - len(less_freq_proteins) - len(middle_ids))
-                traintest_ids = list(less_freq_proteins) + list(middle_ids) + remaining_ids
-                random.shuffle(traintest_ids)
-
-                assert len(traintest_ids) == max_proteins_traintest, [len(l) for l in [less_freq_proteins, middle_ids, remaining_ids]]
-        #quit(1)
+                traintest_ids = self.sample_proteins(max_proteins_traintest, traintest_ids, cluster_gos,
+                    cluster_ann)
+        
         print('Counting proteins at each class')
         ann_by_go = {goid: {'traintest': [], 'val': []} for goid in cluster_gos_set}
         for l, key in [(traintest_ids, 'traintest'), (val_ids, 'val')]:
@@ -146,11 +221,11 @@ class Dataset:
             go_traintests = ann_by_go[goid]['traintest']
             go_val = ann_by_go[goid]['val']
             print(goid, len(go_traintests), len(go_val))
-            if len(go_traintests) < 3:
-                print(goid, 'has zero samples in traintest set')
+            if len(go_traintests) < 6:
+                print(goid, 'has few samples in traintest set')
                 to_remove.append(goid)
-            elif len(go_val) < 3:
-                print(goid, 'has zero samples in validation set')
+            elif len(go_val) < 6:
+                print(goid, 'has few samples in validation set')
                 to_remove.append(goid)
         
         print('Loading parquet')
@@ -161,7 +236,8 @@ class Dataset:
             remove_na=True)
         loaded_ids = cluster_df['id'].to_list()
         print('Creating labels for dataset df')
-        labels, cluster_go_proper_order = create_go_labels(loaded_ids, cluster_ann)
+        labels, cluster_go_proper_order = create_go_labels(loaded_ids, cluster_ann, 
+            labels_to_ignore=set(to_remove))
         cluster_df = cluster_df.with_columns(
             labels=labels
         )
@@ -170,14 +246,40 @@ class Dataset:
         val_df = cluster_df.filter(pl.col('id').is_in(val_set))
         print(len(traintest_df), 'proteins in cluster traintest df')
         print(len(val_df), 'proteins in cluster val df')
+
+        traintest_folded, gos_to_remove = separate_folds(
+            traintest_df, 
+            n_folds, cluster_go_proper_order)
+
+        if len(gos_to_remove) > 0:
+            print('Removing GO terms which did not survive folding:', gos_to_remove)
+            go_mask = [go not in gos_to_remove for go in cluster_go_proper_order]
+            traintest_labels = traintest_folded['labels'].to_numpy()
+            val_labels = val_df['labels'].to_numpy()
+            traintest_labels_filtered_vec = [
+                    np.array([val for should_use, val in zip(go_mask, prot_onehot_labels) if should_use])
+                for prot_onehot_labels in traintest_labels]
+            val_labels_filtered_vec = [
+                    np.array([val for should_use, val in zip(go_mask, prot_onehot_labels) if should_use])
+                for prot_onehot_labels in val_labels]
+            traintest_folded = traintest_folded.with_columns(
+                labels=np.asarray(traintest_labels_filtered_vec)
+            )
+            val_df = val_df.with_columns(
+                labels=np.asarray(val_labels_filtered_vec)
+            )
+            cluster_go_proper_order = [go 
+                for go, should_use in zip(cluster_go_proper_order, go_mask) if should_use]
+
         #cluster_df['labels'] = labels_np
 
         print('Saving parquet to tmp')
         traintest_df_path = tmp_dir + '/traintest_' + self.dataset_name + '-' + cluster_name + '.parquet'
         val_df_path = tmp_dir + '/val_' + self.dataset_name + '-' + cluster_name + '.parquet'
-        traintest_df.write_parquet(traintest_df_path)
+        traintest_folded.write_parquet(traintest_df_path)
         val_df.write_parquet(val_df_path)
         del traintest_df
+        del traintest_folded
         del val_df
         del cluster_df
 

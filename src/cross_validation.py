@@ -16,9 +16,11 @@ class BasicEnsemble():
         results_mean = np.mean(results, axis=0)
         return results_mean
     
-def split_train_test_n_folds(traintest_path, features, n_folds, max_proteins=60000):
-    test_perc = 1/n_folds
-    test_perc_str = str(round(test_perc, 2))
+def split_train_test_n_folds(traintest_path, features, max_proteins=60000):
+    #Make sure the dataset is prepared as train_x, train_y, test_x and test_y binary files
+    #If not prepared, converts the parquet file to separate binary files and saves them
+    fold_ids = load_columns_from_parquet(traintest_path, ['fold_id'])
+    n_folds = fold_ids['fold_id'].max() + 1
     base_dir = traintest_path.replace('.parquet', '_folds'+str(n_folds)+"_features-"+'-'.join(features))
     
     fold_ids = [str(i) for i in range(n_folds)]
@@ -43,18 +45,26 @@ def split_train_test_n_folds(traintest_path, features, n_folds, max_proteins=600
     else:
         print('Preparing', base_dir)
         run_command(['mkdir -p', base_dir])
-        cols_to_use = ['id'] + features + ['labels']
+        cols_to_use = ['id', 'fold_id'] + features + ['labels']
         traintest = load_columns_from_parquet(traintest_path, cols_to_use)
-        if len(traintest) > max_proteins:
+        '''if len(traintest) > max_proteins:
             print(traintest_path, 'is too large, sampling down')
             traintest = traintest.sample(fraction=(max_proteins/len(traintest)), 
-                shuffle=True, seed=1337+int(fold_i))
-        print('Creating random splits', file=sys.stderr)
-        traintest_parts = split_into_n_parts(traintest, n_folds, seed=1337)
+                shuffle=True, seed=1337+int(fold_i))'''
+
+        print('Separating splits', file=sys.stderr)
+        # Cria os folds usando a coluna fold_id já existente
+        traintest_parts = []
+        for fold_idx in range(n_folds):
+            part = traintest.filter(pl.col('fold_id') == fold_idx)
+            traintest_parts.append(part)
+
         print('Using splits to create train/test folds', file=sys.stderr)
-        for fold_i, fold_parts_dict in folds.items():
-            train_parts = [part for i, part in enumerate(traintest_parts) if i != int(fold_i)]
-            test = traintest_parts[int(fold_i)]
+        for test_fold_i, fold_parts_dict in folds.items():
+            train_parts = [part 
+                for i, part in enumerate(traintest_parts) 
+                if i != int(test_fold_i)]
+            test = traintest_parts[int(test_fold_i)]
             train = pl.concat(train_parts)
         
             feature_columns = [c for c in train.columns if c != 'labels' and c != 'id']
@@ -84,8 +94,8 @@ def split_train_test_n_folds(traintest_path, features, n_folds, max_proteins=600
             for p, obj in to_save:
                 dump(obj, open(p, 'wb'))
 
-            open(base_dir+'/train_ids_'+fold_i+'.txt', 'w').write('\n'.join(train_ids))
-            open(base_dir+'/test_ids_'+fold_i+'.txt', 'w').write('\n'.join(test_ids))
+            open(base_dir+'/train_ids_'+test_fold_i+'.txt', 'w').write('\n'.join(train_ids))
+            open(base_dir+'/test_ids_'+test_fold_i+'.txt', 'w').write('\n'.join(test_ids))
         
         return True
     
