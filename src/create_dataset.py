@@ -70,11 +70,13 @@ def separate_folds(traintest_df: pl.DataFrame, n_folds: int, cluster_go_proper_o
         traintest_ids = traintest_df['id'].to_list()
         random.shuffle(traintest_ids)
 
-        part_size = len(traintest_ids) // n_folds
-        part_ids = [traintest_ids[i:i+part_size] for i in range(0, len(traintest_ids), part_size)]
-        random.shuffle(part_ids)
+        #part_size = len(traintest_ids) // n_folds
+        #part_ids = [traintest_ids[i:i+part_size] for i in range(0, len(traintest_ids), part_size)]
+        #random.shuffle(part_ids)
+        part_ids = np.array_split(traintest_ids, n_folds)
+        parts = [traintest_df.filter(pl.col('id').is_in(local_part_ids.tolist())) for local_part_ids in part_ids]
 
-        parts = [traintest_df.filter(pl.col('id').is_in(local_part_ids)) for local_part_ids in part_ids]
+        #parts = [traintest_df.filter(pl.col('id').is_in(local_part_ids)) for local_part_ids in part_ids]
         constant_labels = set()
         for part in parts:
             labels_np = part['labels'].to_numpy()
