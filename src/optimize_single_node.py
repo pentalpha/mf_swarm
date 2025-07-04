@@ -27,10 +27,9 @@ if __name__ == '__main__':
 
     problem_translator = ProblemTranslator(None, raw_values=params_dict['problem_translator'])
     
-    split_train_test_n_folds(node['traintest_path'], features, 
-        params_dict['n_folds'], max_proteins=params_dict['max_proteins'])
+    split_train_test_n_folds(node['traintest_path'], features)
     heuristic_model = RandomSearchMetaheuristic(node_name, problem_translator, 160,
-        n_jobs=1, metric_name="fitness", metric_name2 = 'f1_score_w_06')
+        n_jobs=5, metric_name="fitness", metric_name2 = 'f1_score_w_06')
     
     runner = CrossValRunner(problem_translator, params_dict, features, N_FOLDS)
     print('Running', node_name)

@@ -67,7 +67,7 @@ def split_train_test_n_folds(traintest_path, features, max_proteins=60000):
             test = traintest_parts[int(test_fold_i)]
             train = pl.concat(train_parts)
         
-            feature_columns = [c for c in train.columns if c != 'labels' and c != 'id']
+            feature_columns = [c for c in train.columns if not c in ['labels', 'fold_id', 'id']]
             train_ids = train['id'].to_list()
             train_x = train.select(feature_columns)
             train_y = train.select('labels')

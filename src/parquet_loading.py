@@ -81,15 +81,20 @@ class VectorLoader:
         
         if remove_na:
             na_indexes = set()
+            na_by_dataset = {n: 0 for n in dataset_names}
             for index, protein_id in enumerate(ids_to_load):
-                for vec in loaded_data:
+                for vec, dataset_name in zip(loaded_data, dataset_names):
                     emb = vec[index]
                     if np.isnan(emb).any():
+                        na_by_dataset[dataset_name] += 1
                         na_indexes.add(index)
-                        break
+                        #break
             print(len(na_indexes), 'rows with nan values in total of', len(ids_to_load), 'rows')
-            
-            if len(na_indexes) > 0:
+            print('NaNs by dataset:', na_by_dataset)
+            if (len(na_indexes) / len(ids_to_load)) > 0.3:
+                print('Too many NaNs while loading datasets')
+                raise Exception('Dataset generation error!')
+            elif len(na_indexes) > 0:
                 print('Found', len(na_indexes), 'nan values')
                 mask = [i for i in range(len(ids_to_load)) if not i in na_indexes]
                 ids_to_load = [ids_to_load[i] for i in mask]

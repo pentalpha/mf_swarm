@@ -20,6 +20,7 @@ from util_base import concat_lists, create_go_labels, run_command
 dataset_types = {
     'base_benchmark',
     'taxon_benchmark',
+    'taxon_benchmark_cv',
     'cell_location',
     'full_swarm',
     'small_swarm'
@@ -123,7 +124,8 @@ def separate_folds(traintest_df: pl.DataFrame, n_folds: int, cluster_go_proper_o
 
 
 class Dataset:
-    def __init__(self, dataset_path = None, dimension_db: DimensionDB = None, min_proteins_per_mf: int = None, 
+    def __init__(self, dataset_path = None, dimension_db: DimensionDB = None, 
+            min_proteins_per_mf: int = None, 
             dataset_type: str = None, val_perc: float = None) -> None:
         if dataset_path == None:
             self.new_dataset = True
@@ -317,14 +319,16 @@ class Dataset:
         max_proteins_traintest = None
 
         print(self.dataset_params)
-        if dataset_type in ['base_benchmark', 'taxon_benchmark']:
+        if dataset_type in ['base_benchmark', 'taxon_benchmark', 'taxon_benchmark_cv']:
             print('Dataset.base_benchmark_goids_clustering')
             go_clusters = Dataset.base_benchmark_goids_clustering(dimension_db, go_freqs)
             max_proteins_traintest = 4500
             if dataset_type == 'base_benchmark':
                 self.datasets_to_load = dimension_db.plm_names
-            else:
+            elif dataset_type == 'taxon_benchmark':
                 self.datasets_to_load = ['ankh_base', 'prottrans'] + dimension_db.taxa_onehot_names + dimension_db.taxa_profile_names
+            else:
+                self.datasets_to_load = ['taxa_256', 'ankh_base', 'esm2_t33']
         elif dataset_type in ["full_swarm", 'small_swarm']:
             print('Dataset.full_mf_goids_clustering')
             go_clusters = Dataset.full_mf_goids_clustering(dimension_db, go_freqs, len(traintest_set))
