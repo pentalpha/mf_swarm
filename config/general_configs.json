@@ -1,0 +1,8 @@
+{
+    "dimension_db_release_n": "1",
+    "dimension_db_releases_dir": "~/data/protein_dimension_db/",
+    "datasets_dir": "~/data/mf_swarm_datasets/",
+    "min_proteins_per_mf": "40",
+    "val_perc": "0.15",
+    "optimization_dir": "~/data/mf_swarm_train/"
+}

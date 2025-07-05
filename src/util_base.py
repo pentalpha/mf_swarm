@@ -4,8 +4,15 @@ from os import path
 import subprocess
 from typing import List
 import numpy as np
+import json
 
 proj_dir = path.dirname(path.dirname(__file__))
+configs_dir = proj_dir + '/config'
+
+general_configs = json.load(open(configs_dir+'/general_configs.json', 'r'))
+for key in general_configs.keys():
+    if '~' in general_configs[key]:
+        general_configs[key] = path.expanduser(general_configs[key])
 
 #molecular function root
 irrelevant_mfs = {'GO:0003674'}

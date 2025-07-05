@@ -9,7 +9,7 @@ from typing import List
 from metaheuristics import ProblemTranslator
 from create_dataset import Dataset, find_latest_dataset
 from dimension_db import DimensionDB
-from util_base import proj_dir, run_command, create_params_for_features
+from util_base import proj_dir, run_command, create_params_for_features, general_configs
 
 
 '''
@@ -35,20 +35,16 @@ def run_optimization(name: str, features: List[str], nodes: dict,
         local_dir: str, param_bounds: dict):
     
     print('Preparing', name, features)
-    custom_param_bounds = param_bounds
 
     run_command(['mkdir -p', local_dir])
     
     print('Preparing', name)
-    params_dict_custom = create_params_for_features(features, 
-        bounds=custom_param_bounds, convert_plm_dims=False)
-    
-    json.dump(params_dict_custom, 
-        open(local_dir + '/params_dict_custom_raw.json', 'w'), 
+    json.dump(param_bounds, 
+        open(local_dir + '/param_bounds_raw.json', 'w'), 
         indent=4)
-    problem_translator = ProblemTranslator(params_dict_custom)
+    problem_translator = ProblemTranslator(param_bounds)
     json.dump(problem_translator.to_dict(), 
-        open(local_dir + '/params_dict_custom.json', 'w'), 
+        open(local_dir + '/param_bounds_parsed.json', 'w'), 
         indent=4)
 
     param_dicts = []
@@ -58,11 +54,11 @@ def run_optimization(name: str, features: List[str], nodes: dict,
             'n_folds': 5,
             'max_proteins': 90000,
             'problem_translator': problem_translator.to_dict(),
-            'pop_size': 160,
-            'n_jobs': 6,
+            'pop_size': 14,
+            'n_jobs': 1,
             'metric_name': "fitness",
             'metric_name2': 'f1_score_w_06',
-            'gens': 4,
+            'gens': 2,
             'top_perc': 0.6,
             'log_dir': local_dir + '/logs/' + node_name,
             'features': features,
@@ -97,23 +93,12 @@ def run_optimization(name: str, features: List[str], nodes: dict,
 
     return optimizations_done
 
-if __name__ == '__main__':
-    dimension_db_releases_dir = sys.argv[1]
-    #hint: 1
-    dimension_db_release_n    = sys.argv[2]
-    datasets_dir              = sys.argv[3]
-    #hint: 30
-    min_proteins_per_mf       = int(sys.argv[4])
-    val_perc                  = float(sys.argv[5])
-    optimization_dir          = sys.argv[6]
-    #model_output_dir          = sys.argv[7]
-    print(sys.argv)
-
-    dataset_type = 'full_swarm'
+def find_or_create_dataset(datasets_dir, dataset_type, min_proteins_per_mf, 
+        dimension_db_release_n, dimension_db_releases_dir, val_perc):
     matching_dataset_path = find_latest_dataset(datasets_dir, dataset_type, 
                                             min_proteins_per_mf, dimension_db_release_n,
                                             val_perc)
-    if matching_dataset_path != None:
+    if matching_dataset_path is not None:
         dataset = Dataset(dataset_path=matching_dataset_path)
     else:
         dimension_db = DimensionDB(dimension_db_releases_dir, dimension_db_release_n, new_downloads=True)
@@ -125,10 +110,25 @@ if __name__ == '__main__':
     if dataset.new_dataset:
         dataset.save(datasets_dir)
     
+    return dataset
+
+if __name__ == '__main__':
+
+    dimension_db_releases_dir = general_configs['dimension_db_releases_dir']
+    dimension_db_release_n    = general_configs['dimension_db_release_n']
+    datasets_dir              = general_configs['datasets_dir']
+    min_proteins_per_mf       = int(general_configs['min_proteins_per_mf'])
+    val_perc                  = float(general_configs['val_perc'])
+    optimization_dir          = general_configs['optimization_dir']
+    #model_output_dir          = sys.argv[1]
+    print(sys.argv)
+
+    dataset_type = 'full_swarm'
+    dataset = find_or_create_dataset(datasets_dir, dataset_type, min_proteins_per_mf, 
+        dimension_db_release_n, dimension_db_releases_dir, val_perc)
+    
     feature_list = ['taxa_256', 'ankh_base', 'esm2_t33']
-    #get top feature list
-    #add current taxa encoder to feature list
-    custom_bounds_path = proj_dir + '/config/base_param_bounds_v2.larger_taxa.json'
+    custom_bounds_path = proj_dir + '/config/base_param_bounds.v2.benchmarked.json'
     bounds_dict = json.load(open(custom_bounds_path, 'r'))
     
     name = 'mf_swarm-'+'-'.join(feature_list)

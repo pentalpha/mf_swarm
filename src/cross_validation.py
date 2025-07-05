@@ -2,14 +2,21 @@ from os import path
 import sys
 import numpy as np
 from pickle import load, dump
+import keras
+from sklearn import metrics
 
 from util_base import concat_lists, run_command
 from parquet_loading import load_columns_from_parquet
 from node_factory import makeMultiClassifierModel, split_into_n_parts, split_train_test_polars
 import polars as pl
+
 class BasicEnsemble():
-    def __init__(self, model_list) -> None:
+    def __init__(self, model_list, stats_dicts) -> None:
         self.models = model_list
+        self.stats_dicts = stats_dicts
+        self.stats = {}
+        for k in stats_dicts[0].keys():
+            self.stats[k] = round(np.mean([d[k] for d in stats_dicts]), 5)
     
     def predict(self, x, verbose=0):
         results = [m.predict(x) for m in self.models]
@@ -127,15 +134,13 @@ def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins
             params_dict)
         models.append(annot_model)
         stats_dicts.append(stats)
-    
-    stats = {}
-    for k in stats_dicts[0].keys():
-        stats[k] = np.mean([d[k] for d in stats_dicts])
+        print(stats)
 
     #print(params['cluster_name'], stats)
-    annot_model = BasicEnsemble(models)
+    annot_model = BasicEnsemble(models, stats_dicts)
+    print(annot_model.stats)
 
-    return annot_model, stats
+    return annot_model
 
 class CrossValRunner():
     def __init__(self, param_translator, node, features, n_folds):
@@ -149,8 +154,85 @@ class CrossValRunner():
         new_params_dict = self.new_param_translator.decode(solution)
         self.node['params_dict'] = new_params_dict
         #print('getting roc_auc s', file=sys.stderr)
-        model_obj, metrics = train_crossval_node(self.node, self.features, n_folds=self.n_folds)
-        print(metrics)
+        model_obj = train_crossval_node(self.node, self.features, n_folds=self.n_folds)
+        print(model_obj.stats)
         #print(roc_aucs, file=sys.stderr)
         #print('objective_func finish', file=sys.stderr)
-        return metrics
+        return model_obj.stats
+
+def validate_cv_model(node, solution_dict, features, n_folds=5):
+    node['params_dict'] = solution_dict
+    annot_model = train_crossval_node(node, features, n_folds=n_folds)
+    print('Validating')
+    val_path = node['node']['val_path']
+    go_labels = node['node']['go']
+    val_df = pl.read_parquet(val_path)
+    val_x_np = []
+    for col in features:
+        val_x_np.append(val_df[col].to_numpy())
+    val_df_y_np = val_df['labels'].to_numpy()
+
+    validations = []
+    test_stats_vec = annot_model.stats_dicts + [annot_model.stats]
+    basemodels_and_ensemble = annot_model.models + [annot_model]
+    val_y_pred = None
+    for model, stats in zip(basemodels_and_ensemble, test_stats_vec):
+        val_y_pred = model.predict(val_x_np, verbose=0)
+        acc = np.mean(keras.metrics.binary_accuracy(val_df_y_np, val_y_pred).numpy())
+        roc_auc_score_mac = metrics.roc_auc_score(val_df_y_np, val_y_pred, average='macro')
+        roc_auc_score_w = metrics.roc_auc_score(val_df_y_np, val_y_pred, average='weighted')
+        auprc_mac = metrics.average_precision_score(val_df_y_np, val_y_pred)
+        auprc_w = metrics.average_precision_score(val_df_y_np, val_y_pred, average='weighted')
+        print(roc_auc_score_w)
+        y_pred_05 = (val_y_pred > 0.5).astype(int)
+        y_pred_06 = (val_y_pred > 0.6).astype(int)
+        f1_score = metrics.f1_score(val_df_y_np, y_pred_05, average='macro')
+        f1_score_w_05 = metrics.f1_score(val_df_y_np, y_pred_05, average='weighted')
+        f1_score_w_06 = metrics.f1_score(val_df_y_np, y_pred_06, average='weighted')
+        recall_score = metrics.recall_score(val_df_y_np, y_pred_05, average='macro')
+        recall_score_w_05 = metrics.recall_score(val_df_y_np, y_pred_05, average='weighted')
+        recall_score_w_06 = metrics.recall_score(val_df_y_np, y_pred_06, average='weighted')
+        precision_score = metrics.precision_score(val_df_y_np, y_pred_05, average='macro')
+        precision_score_w_05 = metrics.precision_score(val_df_y_np, y_pred_05, average='weighted')
+        precision_score_w_06 = metrics.precision_score(val_df_y_np, y_pred_06, average='weighted')
+        
+        val_stats = {'ROC AUC': float(roc_auc_score_mac),
+            'ROC AUC W': float(roc_auc_score_w),
+            'AUPRC': float(auprc_mac),
+            'AUPRC W': float(auprc_w),
+            'Accuracy': float(acc), 
+            'f1_score': f1_score,
+            'f1_score_w_05': f1_score_w_05,
+            'f1_score_w_06': f1_score_w_06,
+            'recall_score': recall_score,
+            'recall_score_w_05': recall_score_w_05,
+            'recall_score_w_06': recall_score_w_06,
+            'precision_score': precision_score,
+            'precision_score_w_05': precision_score_w_05,
+            'precision_score_w_06': precision_score_w_06,
+            'val_x': len(val_df),
+            'quickness': stats['quickness']
+        }
+
+        metric_weights = [('ROC AUC W', 4), ('AUPRC', 4), 
+                        ('quickness', 1)]
+        w_total = sum([w for m, w in metric_weights])
+        val_stats['fitness'] = sum([val_stats[m]*w for m, w in metric_weights]) / w_total
+        validations.append(val_stats)
+    
+    results = {
+        'test': annot_model.stats,
+        'validation': validations[-1],
+        'base_model_validations': validations[:4],
+        'go_labels': go_labels,
+    }
+
+    validation_solved_df = pl.DataFrame(
+        {
+            'id': val_df['id'].to_list(),
+            'y': val_df_y_np,
+            'y_pred': val_y_pred
+        }
+    )
+    
+    return annot_model, results, validation_solved_df
