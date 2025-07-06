@@ -1,7 +1,12 @@
 from os import path
+import os
 import sys
 import numpy as np
 from pickle import load, dump
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 import keras
 from sklearn import metrics
 

@@ -1,7 +1,12 @@
 import sys
 import json
+import os
 from os import path
 from pickle import dump
+
+print("New thread", file=sys.stderr)
+os.environ["KERAS_BACKEND"] = "tensorflow"
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 from cross_validation import CrossValRunner, split_train_test_n_folds, validate_cv_model
 from metaheuristics import RandomSearchMetaheuristic

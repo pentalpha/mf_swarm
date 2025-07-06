@@ -54,12 +54,12 @@ def run_optimization(name: str, features: List[str], nodes: dict,
             'n_folds': 5,
             'max_proteins': 90000,
             'problem_translator': problem_translator.to_dict(),
-            'pop_size': 14,
-            'n_jobs': 1,
+            'pop_size': general_configs['pop_size'],
+            'n_jobs': general_configs['n_jobs'],
             'metric_name': "fitness",
             'metric_name2': 'f1_score_w_06',
-            'gens': 2,
-            'top_perc': 0.6,
+            'gens': general_configs['gens'],
+            'top_perc': general_configs['top_perc'],
             'log_dir': local_dir + '/logs/' + node_name,
             'features': features,
             'node': node,
@@ -75,6 +75,10 @@ def run_optimization(name: str, features: List[str], nodes: dict,
         exp_params_path = node_dir + '/exp_params.json'
         json.dump(params_dict, open(exp_params_path, 'w'), indent=4)
         node_experiments.append(exp_params_path)
+    
+    print('Node experiments sequence:')
+    for x in node_experiments:
+        print(x)
 
     optimizations_done = {}
     for exp_path in node_experiments:

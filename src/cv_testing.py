@@ -11,7 +11,6 @@ from pickle import load, dump
 import polars as pl
 
 print("New thread", file=sys.stderr)
-
 os.environ["KERAS_BACKEND"] = "tensorflow"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
