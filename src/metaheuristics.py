@@ -49,7 +49,8 @@ def calc_custom_param_bounds(benchmarking_dir, testnames, norm_plm=True):
 
 class RandomSearchMetaheuristic:
     def __init__(self, test_name, param_translator: ProblemTranslator, 
-                 pop_size, n_jobs = 24, metric_name=None, metric_name2=None) -> None:
+                 pop_size, n_jobs = 24, metric_name=None, metric_name2=None,
+                 ready_solutions=[]) -> None:
         self.param_translator = param_translator
         upper_bounds = self.param_translator.upper_bounds
         lower_bounds = self.param_translator.lower_bounds
@@ -61,10 +62,13 @@ class RandomSearchMetaheuristic:
         self.to_optimize = metric_name
         self.to_optimize2 = metric_name2
         random.seed(1337)
-        self.generate_population()
+        self.generate_population(ready_solutions=ready_solutions)
     
-    def generate_population(self):
+    def generate_population(self, ready_solutions=[]):
         self.population = []
+        for sol in ready_solutions:
+            encoded = self.param_translator.encode(sol)
+            self.population.append(encoded)
         #for param_dict in param_sets:
         #    encoded = PARAM_TRANSLATOR.encode(param_dict)
         #    self.population.append(encoded)

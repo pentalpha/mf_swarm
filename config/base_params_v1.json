@@ -11,6 +11,12 @@
         "l2_dim": 433,
         "leakyrelu_1_alpha": 0.05286754528717738
     },
+    "prottrans": {
+        "dropout_rate": 0.7883196256738243, 
+        "l1_dim": 1297, 
+        "l2_dim": 1294, 
+        "leakyrelu_1_alpha": 0.14689903517280015
+    },
     "final": {
         "batch_size": 130,
         "dropout_rate": 0.35154186929241227,

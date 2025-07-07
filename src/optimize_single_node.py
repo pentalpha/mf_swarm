@@ -28,6 +28,7 @@ if __name__ == '__main__':
     node_name = params_dict['node_name']
     node = params_dict['node']
     features = params_dict['features']
+    ready_solutions = params_dict.get('ready_solutions', [])
     print(features)
     #custom_param_bounds = params_dict['param_bounds']
     #print(custom_param_bounds)
@@ -37,7 +38,8 @@ if __name__ == '__main__':
     
     split_train_test_n_folds(node['traintest_path'], features)
     heuristic_model = RandomSearchMetaheuristic(node_name, problem_translator, pop_size,
-        n_jobs=n_jobs, metric_name="fitness", metric_name2 = 'f1_score_w_06')
+        n_jobs=n_jobs, metric_name="fitness", metric_name2 = 'f1_score_w_06', 
+        ready_solutions=ready_solutions)
     
     runner = CrossValRunner(problem_translator, params_dict, features, n_folds)
     print('Running', node_name)

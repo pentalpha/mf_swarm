@@ -32,7 +32,7 @@ return val_results
 '''
 
 def run_optimization(name: str, features: List[str], nodes: dict,
-        local_dir: str, param_bounds: dict):
+        local_dir: str, param_bounds: dict, ready_solutions: List[dict] = None):
     
     print('Preparing', name, features)
 
@@ -54,6 +54,7 @@ def run_optimization(name: str, features: List[str], nodes: dict,
             'n_folds': 5,
             'max_proteins': 90000,
             'problem_translator': problem_translator.to_dict(),
+            'ready_solutions': ready_solutions if ready_solutions else [],
             'pop_size': general_configs['pop_size'],
             'n_jobs': general_configs['n_jobs'],
             'metric_name': "fitness",
@@ -183,9 +184,9 @@ if __name__ == '__main__':
     standard_trainings = run_standard_training(name, feature_list, dataset.go_clusters,
         local_dir, base_params)
     #sort standard trainings by AUPRC W
-    standard_trainings = sorted(standard_trainings.keys(), 
+    standard_trainings_sorted = sorted(standard_trainings.keys(), 
         key=lambda node_name: standard_trainings[node_name]['validation']['AUPRC W'])
-    worst_trainings = standard_trainings[:n_to_optimize]
+    worst_trainings = standard_trainings_sorted[:n_to_optimize]
 
     clusters_subset = {}
     print('Worst trainings to optimize:')
@@ -197,5 +198,6 @@ if __name__ == '__main__':
         name=dataset_type+'_'+name,
         features=feature_list,
         nodes=clusters_subset,
-        local_dir=optimization_dir,
-        param_bounds=bounds_dict)
+        local_dir=local_dir,
+        param_bounds=bounds_dict,
+        ready_solutions=[base_params])
