@@ -344,13 +344,13 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
     deepest_level = max(node_levels)
     levels_width = max(node_pos_in_level)
     auprc_min = min([x for x in auprc_ws if x is not None])
+    auprc_min = round(auprc_min, 2)-0.05
     proteins_min = min(n_proteins)
     proteins_max = max(n_proteins)
     labels_min = min([x for x in n_labels.values()])
     labels_max = max([x for x in n_labels.values()])
-    cmap = cm.winter
     m1 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=auprc_min, vmax=1.0), 
-        cmap=cmap)
+        cmap=cm.seismic_r)
     m2 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=proteins_min, vmax=proteins_max), 
         cmap=cm.seismic)
     m3 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=labels_min, vmax=labels_max), 
