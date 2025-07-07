@@ -47,11 +47,11 @@ if __name__ == '__main__':
     print('Saving', node_name)
     meta_report_path = local_dir + '/optimization.txt'
     open(meta_report_path, 'w').write(report)
-    json.dump(solution_dict, open(results_json_path, 'w'), indent=4)
+    json.dump(solution_dict, open(meta_report_path.replace('.txt', '.json'), 'w'), indent=4)
 
     #val_results, validation_solved_df = run_validation(params_dict, solution_dict, features)
     final_model_ensemble, val_results, validation_solved_df = validate_cv_model(
         params_dict, solution_dict, features, n_folds=n_folds)
-    validation_solved_df.write_parquet(local_dir+'/validation.parquet')
+    validation_solved_df.write_parquet(local_dir+'/optimized_validation.parquet')
     json.dump(val_results, open(results_json_path, 'w'), indent=4)
-    dump(final_model_ensemble, open(local_dir+'/model.obj', 'wb'))
+    dump(final_model_ensemble, open(local_dir+'/optimized_model.obj', 'wb'))

@@ -7,7 +7,7 @@ import sys
 from typing import List
 
 from metaheuristics import ProblemTranslator
-from create_dataset import Dataset, find_latest_dataset
+from create_dataset import Dataset, find_latest_dataset, find_or_create_dataset
 from dimension_db import DimensionDB
 from util_base import proj_dir, run_command, create_params_for_features, general_configs
 
@@ -97,24 +97,61 @@ def run_optimization(name: str, features: List[str], nodes: dict,
 
     return optimizations_done
 
-def find_or_create_dataset(datasets_dir, dataset_type, min_proteins_per_mf, 
-        dimension_db_release_n, dimension_db_releases_dir, val_perc):
-    matching_dataset_path = find_latest_dataset(datasets_dir, dataset_type, 
-                                            min_proteins_per_mf, dimension_db_release_n,
-                                            val_perc)
-    if matching_dataset_path is not None:
-        dataset = Dataset(dataset_path=matching_dataset_path)
-    else:
-        dimension_db = DimensionDB(dimension_db_releases_dir, dimension_db_release_n, new_downloads=True)
-        dataset = Dataset(dimension_db=dimension_db, 
-                      min_proteins_per_mf=min_proteins_per_mf, 
-                      dataset_type=dataset_type,
-                      val_perc=val_perc)
-    print('Nodes in dataset:', dataset.go_clusters.keys())
-    if dataset.new_dataset:
-        dataset.save(datasets_dir)
+def run_standard_training(name: str, features: List[str], nodes: dict,
+        local_dir: str, meta_parameters: dict):
     
-    return dataset
+    print('Preparing', name, features)
+
+    run_command(['mkdir -p', local_dir])
+    
+    print('Preparing', name)
+    json.dump(meta_parameters, 
+        open(local_dir + '/standard_params.json', 'w'), 
+        indent=4)
+
+    param_dicts = []
+    for node_name, node in nodes.items():
+        params_dict = {
+            'n_folds': 5,
+            'max_proteins': 90000,
+            'params_dict': meta_parameters,
+            'n_jobs': general_configs['n_jobs'],
+            'log_dir': local_dir + '/logs/' + node_name,
+            'features': features,
+            'node': node,
+            'node_name': node_name
+        }
+        param_dicts.append(params_dict)
+    param_dicts.sort(key=lambda node: len(node['node']['id']))
+
+    node_experiments = []
+    for params_dict in param_dicts:
+        node_dir = local_dir + '/' + params_dict['node_name']
+        run_command(['mkdir -p', node_dir])
+        exp_params_path = node_dir + '/standard_params.json'
+        json.dump(params_dict, open(exp_params_path, 'w'), indent=4)
+        node_experiments.append(exp_params_path)
+    
+    print('Node run training sequence:')
+    for x in node_experiments:
+        print(x)
+
+    trainings_done = {}
+    for exp_path in node_experiments:
+        node_name = path.basename(path.dirname(exp_path))
+        run_result = exp_path.replace('params', 'results')
+        cmd = ['python', 'src/train_single_node.py', exp_path, run_result]
+        if not path.exists(run_result):
+            run_command(['mkdir -p', path.dirname(run_result)])
+            print(' '.join(cmd))
+            run_command(cmd)
+        if not path.exists(run_result):
+            print('Error: Standard training result not found for', node_name)
+            quit(1)
+        
+        trainings_done[node_name] = json.load(open(run_result, 'r'))
+
+    return trainings_done
 
 if __name__ == '__main__':
 
@@ -124,7 +161,9 @@ if __name__ == '__main__':
     min_proteins_per_mf       = int(general_configs['min_proteins_per_mf'])
     val_perc                  = float(general_configs['val_perc'])
     optimization_dir          = general_configs['optimization_dir']
-    #model_output_dir          = sys.argv[1]
+    n_to_optimize          = general_configs['n_to_optimize']
+    experiment_name           = sys.argv[1]
+    local_dir = path.join(optimization_dir, experiment_name)
     print(sys.argv)
 
     dataset_type = 'full_swarm'
@@ -134,12 +173,29 @@ if __name__ == '__main__':
     feature_list = ['taxa_256', 'ankh_base', 'esm2_t33']
     custom_bounds_path = proj_dir + '/config/base_param_bounds.v2.benchmarked.json'
     bounds_dict = json.load(open(custom_bounds_path, 'r'))
+    base_params_path = proj_dir + '/config/base_params_v1.json'
+    base_params = json.load(open(base_params_path, 'r'))
     
     name = 'mf_swarm-'+'-'.join(feature_list)
+
+    json.dump(general_configs, open(local_dir + '/configs_used.json', 'w'), indent=4)
+
+    standard_trainings = run_standard_training(name, feature_list, dataset.go_clusters,
+        local_dir, base_params)
+    #sort standard trainings by AUPRC W
+    standard_trainings = sorted(standard_trainings.keys(), 
+        key=lambda node_name: standard_trainings[node_name]['validation']['AUPRC W'])
+    worst_trainings = standard_trainings[:n_to_optimize]
+
+    clusters_subset = {}
+    print('Worst trainings to optimize:')
+    for node_name in worst_trainings:
+        print(node_name, standard_trainings[node_name]['validation']['AUPRC W'])
+        clusters_subset[node_name] = dataset.go_clusters[node_name]
 
     optimized_metaparameters = run_optimization(
         name=dataset_type+'_'+name,
         features=feature_list,
-        nodes=dataset.go_clusters,
+        nodes=clusters_subset,
         local_dir=optimization_dir,
         param_bounds=bounds_dict)

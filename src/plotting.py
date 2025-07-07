@@ -291,9 +291,9 @@ def plot_final_solution_performance(benchmark_path):
     fig.savefig(benchmark_path+'/model_performance.png', dpi=120)
 
 def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
-    node_dicts = glob(full_swarm_exp_dir + '/*/exp_params.json')
-    node_results = [x.replace('/exp_params.json', '/exp_results.json') 
-        for x in node_dicts]
+    node_dirs = glob(full_swarm_exp_dir + '/Level-*')
+    node_dicts = [x+'/exp_params.json' for x in node_dirs]
+    node_results = [x+'/exp_results.json' for x in node_dirs]
     
     n_proteins = []
     node_names = []
@@ -303,6 +303,8 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
     node_pos_in_level = []
     n_labels = {}
     for exp_params, exp_results in zip(node_dicts, node_results):
+        if not path.exists(exp_params):
+            exp_params = exp_params.replace('exp_params.json', 'standard_params.json')
         params = json.load(open(exp_params, 'r'))
 
         node_names.append(params['node_name'])
@@ -310,8 +312,13 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
         node_levels.append(int(node_names[-1].split('_')[0].split('-')[1]))
         n_labels[node_names[-1]] = len(params['node']['go'])
 
+        std_results = exp_results.replace('exp_results.json', 'standard_results.json')
         if path.exists(exp_results):
             results = json.load(open(exp_results, 'r'))
+            auprc_ws.append(results['validation']['AUPRC W'])
+            roc_auc_ws.append(results['validation']['ROC AUC W'])
+        elif path.exists(std_results):
+            results = json.load(open(std_results, 'r'))
             auprc_ws.append(results['validation']['AUPRC W'])
             roc_auc_ws.append(results['validation']['ROC AUC W'])
         else:

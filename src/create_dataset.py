@@ -530,6 +530,25 @@ class Dataset:
         gos_str = '\n'.join(self.go_ids)
         open(path.join(outputdir, 'go_ids.txt'), 'w').write(gos_str)
 
+def find_or_create_dataset(datasets_dir, dataset_type, min_proteins_per_mf, 
+        dimension_db_release_n, dimension_db_releases_dir, val_perc):
+    matching_dataset_path = find_latest_dataset(datasets_dir, dataset_type, 
+                                            min_proteins_per_mf, dimension_db_release_n,
+                                            val_perc)
+    if matching_dataset_path is not None:
+        dataset = Dataset(dataset_path=matching_dataset_path)
+    else:
+        dimension_db = DimensionDB(dimension_db_releases_dir, dimension_db_release_n, new_downloads=True)
+        dataset = Dataset(dimension_db=dimension_db, 
+                      min_proteins_per_mf=min_proteins_per_mf, 
+                      dataset_type=dataset_type,
+                      val_perc=val_perc)
+    print('Nodes in dataset:', dataset.go_clusters.keys())
+    if dataset.new_dataset:
+        dataset.save(datasets_dir)
+    
+    return dataset
+
 if __name__ == "__main__":
     dimension_db_releases_dir = sys.argv[1]
     dimension_db_release_n = sys.argv[2]

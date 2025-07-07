@@ -165,12 +165,7 @@ class CrossValRunner():
         #print('objective_func finish', file=sys.stderr)
         return model_obj.stats
 
-def validate_cv_model(node, solution_dict, features, n_folds=5):
-    node['params_dict'] = solution_dict
-    annot_model = train_crossval_node(node, features, n_folds=n_folds)
-    print('Validating')
-    val_path = node['node']['val_path']
-    go_labels = node['node']['go']
+def validate_cv_model_noretrain(annot_model, val_path, go_labels, features):
     val_df = pl.read_parquet(val_path)
     val_x_np = []
     for col in features:
@@ -228,7 +223,7 @@ def validate_cv_model(node, solution_dict, features, n_folds=5):
     results = {
         'test': annot_model.stats,
         'validation': validations[-1],
-        'base_model_validations': validations[:4],
+        'base_model_validations': validations[:len(validations)-1],
         'go_labels': go_labels,
     }
 
@@ -239,5 +234,17 @@ def validate_cv_model(node, solution_dict, features, n_folds=5):
             'y_pred': val_y_pred
         }
     )
+
+    return results, validation_solved_df 
+
+def validate_cv_model(node, solution_dict, features, n_folds=5):
+    node['params_dict'] = solution_dict
+    annot_model = train_crossval_node(node, features, n_folds=n_folds)
+    print('Validating')
+    val_path = node['node']['val_path']
+    go_labels = node['node']['go']
+    
+    results, validation_solved_df = validate_cv_model_noretrain(
+        annot_model, val_path, go_labels, features)
     
     return annot_model, results, validation_solved_df
