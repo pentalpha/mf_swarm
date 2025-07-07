@@ -1,4 +1,11 @@
+from glob import glob
+import json
+from os import path
+import sys
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import matplotlib as mpl
+import matplotlib.cm as cm
 from decimal import Decimal
 
 from parsing import load_gens_df, load_final_solutions, load_solutions, load_taxa_populations
@@ -282,10 +289,141 @@ def plot_final_solution_performance(benchmark_path):
     fig.tight_layout()
     
     fig.savefig(benchmark_path+'/model_performance.png', dpi=120)
+
+def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
+    node_dicts = glob(full_swarm_exp_dir + '/*/exp_params.json')
+    node_results = [x.replace('/exp_params.json', '/exp_results.json') 
+        for x in node_dicts]
     
+    n_proteins = []
+    node_names = []
+    auprc_ws = []
+    roc_auc_ws = []
+    node_levels = []
+    node_pos_in_level = []
+    n_labels = {}
+    for exp_params, exp_results in zip(node_dicts, node_results):
+        params = json.load(open(exp_params, 'r'))
+
+        node_names.append(params['node_name'])
+        n_proteins.append(len(params['node']['id']))
+        node_levels.append(int(node_names[-1].split('_')[0].split('-')[1]))
+        n_labels[node_names[-1]] = len(params['node']['go'])
+
+        if path.exists(exp_results):
+            results = json.load(open(exp_results, 'r'))
+            auprc_ws.append(results['validation']['AUPRC W'])
+            roc_auc_ws.append(results['validation']['ROC AUC W'])
+        else:
+            #print('No results at', exp_results)
+            auprc_ws.append(None)
+            roc_auc_ws.append(None)
+    
+    y_positions = []
+    for i in range(len(node_levels)):
+        level_names = [n for j, n in enumerate(node_names) if node_levels[j] == node_levels[i]]
+        node_name = node_names[i]
+        names_sorted = sorted(level_names, 
+            key=lambda n: int(n.split('Freq-')[1].split('-')[0]), reverse=True)
+        pos_in_level = names_sorted.index(node_name)
+        node_pos_in_level.append(pos_in_level)
+        if pos_in_level % 2 == 0:
+            y_positions.append(node_levels[i]-0.125)
+        else:
+            y_positions.append(node_levels[i]+0.125)
+    x_positions = []
+    for index in range(len(y_positions)):
+        x_positions.append(node_pos_in_level[index]*0.25)
+    deepest_level = max(node_levels)
+    levels_width = max(node_pos_in_level)
+    auprc_min = min([x for x in auprc_ws if x is not None])
+    proteins_min = min(n_proteins)
+    proteins_max = max(n_proteins)
+    labels_min = min([x for x in n_labels.values()])
+    labels_max = max([x for x in n_labels.values()])
+    cmap = cm.winter
+    m1 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=auprc_min, vmax=1.0), 
+        cmap=cmap)
+    m2 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=proteins_min, vmax=proteins_max), 
+        cmap=cm.seismic)
+    m3 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=labels_min, vmax=labels_max), 
+        cmap=cm.seismic)
+    plot_w = 5.5
+    plot_h = 11
+    fig1, ax1 = plt.subplots(1,1, figsize=(plot_w,plot_h))
+    fig2, ax2 = plt.subplots(1,1, figsize=(plot_w,plot_h))
+    fig3, ax3 = plt.subplots(1,1, figsize=(plot_w,plot_h))
+
+    metrics_labels = ['AUPRC Weighted', 'Proteins for Train/test', 'GO IDs Predicted']
+    axes = [ax1, ax2, ax3]
+    figs = [fig1, fig2, fig3]
+    color_maps = [m1, m2, m3]
+
+    for ax in axes:
+        ax.scatter(x_positions, y_positions, c='white')
+
+    for index in range(len(x_positions)):
+        x_pos = x_positions[index]
+        y_pos = y_positions[index]
+        label = node_names[index]
+        n_go_ids = n_labels[label]
+        traintest_proteins = n_proteins[index]
+        current_auprcw = auprc_ws[index]
+        
+        node_color1 = m1.to_rgba(current_auprcw) if current_auprcw is not None else 'white'
+        node_color2 = m2.to_rgba(traintest_proteins)
+        node_color3 = m3.to_rgba(n_go_ids)
+        
+        node_pos = (x_pos, y_pos)
+        node_w = 0.25
+        node_h = 0.5
+        node_circle1 = patches.Ellipse(node_pos, node_w, node_h, 
+            linewidth=2, facecolor=node_color1, edgecolor='black')
+        ax1.add_patch(node_circle1)
+        node_circle2 = patches.Ellipse(node_pos, node_w, node_h, 
+            linewidth=2, facecolor=node_color2, edgecolor='black')
+        ax2.add_patch(node_circle2)
+        node_circle3 = patches.Ellipse(node_pos, node_w, node_h, 
+            linewidth=2, facecolor=node_color3, edgecolor='black')
+        ax3.add_patch(node_circle3)
+    
+    #ax.get_xaxis().set_visible(False)
+    #ax.set_xscale('log', base=30)
+    min_maxes = [(auprc_min, 1.0), 
+        (proteins_min, proteins_max), 
+        (labels_min, labels_max)]
+    for fig, ax, label, m, min_max in zip(figs, axes, metrics_labels, color_maps, min_maxes):
+        ax.set_ylabel("Gene Ontology Level", fontsize=14)
+        #ax.set_xlabel("Models in Layer", fontsize=18)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        ax.set_yticks([1,2,3,4,5,6,7])
+        ax.set_xticks([])
+        #ax.xaxis.tick_top()
+        #ax.xaxis.set_label_position('top')
+
+        ax.set_ylim(ax.get_ylim()[::-1])
+        ax.set_title(label+"\nof Base Models", fontsize=16)
+        metric_min, metric_max = min_max
+        fourth = (metric_max - metric_min) / 4
+        point_2 = metric_min + fourth
+        point_3 = metric_min + fourth *2
+        point_4 = metric_max - fourth
+        cbar = fig.colorbar(m, ax=ax, label=label, fraction=0.09,
+            ticks=[metric_min, point_2, point_3, point_4, metric_max])
+        cbar.ax.set_yticklabels(
+            cbar.ax.get_yticklabels(), rotation=90, ha='left', va='center')
+        #cbar.ax.yaxis.label.set_rotation(45)
+        fig.tight_layout()
+        #plt.show()
+        label_norm = label.lower().replace(' ', '_').replace('/', '_')
+        output_path = output_dir + '/swarm_' + label_norm + '.png'
+        fig.savefig(output_path, dpi=120)
+
 if __name__ == '__main__':
-    benchmark_path = '/home/pita/experiments/base_benchmark_4'
-    #benchmark_path = sys.argv[1]
-    iterative_gens_draw(benchmark_path)
+    full_swarm_exp_dir = sys.argv[1]
+    draw_swarm_panel(full_swarm_exp_dir, 'img/')
     
     
