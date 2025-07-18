@@ -110,7 +110,39 @@ def split_train_test_n_folds(traintest_path, features, max_proteins=60000):
             open(base_dir+'/test_ids_'+test_fold_i+'.txt', 'w').write('\n'.join(test_ids))
         
         return True
+# ensemble of models created using cross-validation, acting as one unit
+# the results are the average of the results of the individual models
+# this is used to reduce overfitting and improve generalization
+# it is a simple ensemble that averages the predictions of the individual models
+'''
+4. Alternatives and Improvements
+Weighted Averaging: Instead of a simple mean, use performance metrics (e.g., fold-specific accuracy) 
+to weight predictions 10.
+Stacking: Train a meta-model (e.g., logistic regression) on the CV models' predictions 
+for smarter aggregation 1012.
+Bootstrap Aggregating (Bagging): Combine CV with resampling to further reduce variance 28.
+'''
+class BasicEnsemble():
+    def __init__(self, model_list, stats_dicts) -> None:
+        self.models = model_list
+        self.stats_dicts = stats_dicts
+        self.stats = {}
+        for k in stats_dicts[0].keys():
+            self.stats[k] = round(np.mean([d[k] for d in stats_dicts]), 5)
     
+    def predict(self, x, verbose=0):
+        results = [m.predict(x) for m in self.models]
+        results_mean = np.mean(results, axis=0)
+        return results_mean
+
+# Trains a node using cross-validation, returning an ensemble of models
+# The node is a dictionary with the parameters and paths to the data
+# The features are a list of feature names to be used in the model
+# n_folds is the number of folds to be used in cross-validation
+# max_proteins is the maximum number of proteins to be used in the training
+# The function returns an ensemble of models trained on the cross-validation folds
+# The models are trained using the makeMultiClassifierModel function
+# The stats_dicts are the statistics of the models trained on each fold
 def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins=60000):
     node = params['node']
     params_dict = params['params_dict']
