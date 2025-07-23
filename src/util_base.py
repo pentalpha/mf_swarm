@@ -166,7 +166,7 @@ def label_lists_to_onehot(label_lists: list):
     return np.asarray(one_hot), all_labels
 
 def create_go_labels(ids: List[str], ann: dict, labels_to_ignore: set = set()):
-    label_lists = [ann[protid] for protid in ids]
+    label_lists = [ann[protid] if protid in ann else [] for protid in ids]
     label_lists = [list(set(label_list) - labels_to_ignore) for label_list in label_lists]
     label_vecs, labels_sorted = label_lists_to_onehot(label_lists)
     return np.asarray(label_vecs), labels_sorted

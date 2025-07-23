@@ -9,6 +9,7 @@ from typing import List
 from metaheuristics import ProblemTranslator
 from create_dataset import Dataset, find_latest_dataset, find_or_create_dataset
 from dimension_db import DimensionDB
+from plotting import draw_swarm_panel
 from util_base import proj_dir, run_command, create_params_for_features, general_configs
 
 
@@ -179,6 +180,8 @@ if __name__ == '__main__':
     
     name = 'mf_swarm-'+'-'.join(feature_list)
 
+    if not path.exists(local_dir):
+        run_command(['mkdir -p', local_dir])
     json.dump(general_configs, open(local_dir + '/configs_used.json', 'w'), indent=4)
 
     standard_trainings = run_standard_training(name, feature_list, dataset.go_clusters,
@@ -186,18 +189,23 @@ if __name__ == '__main__':
     #sort standard trainings by AUPRC W
     standard_trainings_sorted = sorted(standard_trainings.keys(), 
         key=lambda node_name: standard_trainings[node_name]['validation']['AUPRC W'])
-    worst_trainings = standard_trainings_sorted[:n_to_optimize]
+    if n_to_optimize > 0:
+        worst_trainings = standard_trainings_sorted[:n_to_optimize]
 
-    clusters_subset = {}
-    print('Worst trainings to optimize:')
-    for node_name in worst_trainings:
-        print(node_name, standard_trainings[node_name]['validation']['AUPRC W'])
-        clusters_subset[node_name] = dataset.go_clusters[node_name]
+        clusters_subset = {}
+        print('Worst trainings to optimize:')
+        for node_name in worst_trainings:
+            print(node_name, standard_trainings[node_name]['validation']['AUPRC W'])
+            clusters_subset[node_name] = dataset.go_clusters[node_name]
 
-    optimized_metaparameters = run_optimization(
-        name=dataset_type+'_'+name,
-        features=feature_list,
-        nodes=clusters_subset,
-        local_dir=local_dir,
-        param_bounds=bounds_dict,
-        ready_solutions=[base_params])
+        optimized_metaparameters = run_optimization(
+            name=dataset_type+'_'+name,
+            features=feature_list,
+            nodes=clusters_subset,
+            local_dir=local_dir,
+            param_bounds=bounds_dict,
+            ready_solutions=[base_params])
+    
+    plots_dir = local_dir+'/plots'
+    run_command(['mkdir -p', plots_dir])
+    draw_swarm_panel(local_dir, plots_dir)

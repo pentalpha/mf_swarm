@@ -9,7 +9,7 @@ import os
 
 from stats_custom import calc_metrics_at_freq_threshold
 
-def calc_metrics_for_tool(df_path, experimental_annots, max_n=300):
+def calc_metrics_for_tool(df_path, experimental_annots, max_n=3000):
     print(df_path)
     print('Loading')
     labels_path = df_path.replace('-preds.parquet', '-label_names.txt')
@@ -78,6 +78,6 @@ else:
 print('Analyzing tools')
 df_paths = glob(others_dir+'/*-preds.parquet')
 metrics_all = {}
-for df_path in tqdm(reversed(df_paths)):
+for df_path in tqdm(df_paths):
     metrics_all[df_path] = calc_metrics_for_tool(df_path, experimental_annots)
 json.dump(metrics_all, open(f'{others_dir}/validation_results.json', 'w'), indent=4)

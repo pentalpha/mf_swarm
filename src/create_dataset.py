@@ -8,11 +8,13 @@ import random
 import sys
 import gzip
 from tqdm import tqdm
+from custom_statistics import create_random_baseline
 import obonet
 import networkx as nx
 import numpy as np
 import polars as pl
 
+from sklearn import metrics
 from dimension_db import DimensionDB
 from parquet_loading import VectorLoader
 from util_base import concat_lists, create_go_labels, run_command
@@ -25,6 +27,7 @@ dataset_types = {
     'full_swarm',
     'small_swarm'
 }
+
 
 def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release_n, val_perc):
     dataset_paths = glob(datasets_dir+'/'+dataset_type+'_*')
@@ -202,11 +205,23 @@ class Dataset:
         cluster_ann = {k: v for k, v in cluster_ann.items() if len(v) > 0}
         
         cluster_ids = [p for p in dimension_db.ids if p in cluster_ann]
+        non_cluster_ids = [p for p in dimension_db.ids if p not in cluster_ann]
         cluster_gos_set = set(cluster_gos)
         print('Creating DF', cluster_name, 'with', len(cluster_ids), 'proteins')
         traintest_ids = set(cluster_ids).intersection(traintest_set)
-        val_ids = set(cluster_ids).intersection(val_set)
-
+        negative_samples_n = int(len(traintest_ids) * 0.2)
+        if negative_samples_n < len(non_cluster_ids):
+            negative_samples = random.sample(non_cluster_ids, negative_samples_n)
+        else:
+            negative_samples = non_cluster_ids
+            negative_samples_n = len(negative_samples)
+        print(f'Traintest IDs: {len(traintest_ids)}')
+        print(f'Traintest negative IDs: {negative_samples_n}')
+        print(f'Validation IDs: {len(val_set)}')
+        traintest_ids = list(traintest_ids) + negative_samples
+        print(f'Traintest IDs 2: {len(traintest_ids)}')
+        #val_ids = set(cluster_ids).intersection(val_set)
+        val_ids = list(val_set)
         if max_proteins_traintest:
             if len(traintest_ids) > max_proteins_traintest:
                 traintest_ids = self.sample_proteins(max_proteins_traintest, traintest_ids, cluster_gos,
@@ -216,9 +231,10 @@ class Dataset:
         ann_by_go = {goid: {'traintest': [], 'val': []} for goid in cluster_gos_set}
         for l, key in [(traintest_ids, 'traintest'), (val_ids, 'val')]:
             for protein_id in tqdm(l):
-                prot_ann = cluster_ann[protein_id]
-                for goid in prot_ann.intersection(cluster_gos_set):
-                    ann_by_go[goid][key].append(protein_id)
+                if protein_id in cluster_ann:
+                    prot_ann = cluster_ann[protein_id]
+                    for goid in prot_ann.intersection(cluster_gos_set):
+                        ann_by_go[goid][key].append(protein_id)
         
         to_remove = []
         for goid in cluster_gos:
@@ -240,8 +256,12 @@ class Dataset:
             remove_na=True)
         loaded_ids = cluster_df['id'].to_list()
         print('Creating labels for dataset df')
+        #print('All IDs:', loaded_ids)
         labels, cluster_go_proper_order = create_go_labels(loaded_ids, cluster_ann, 
             labels_to_ignore=set(to_remove))
+        print('Labels shape:', labels.shape)
+        print('cluster_df:')
+        print(cluster_df)
         cluster_df = cluster_df.with_columns(
             labels=labels
         )
@@ -275,7 +295,13 @@ class Dataset:
             cluster_go_proper_order = [go 
                 for go, should_use in zip(cluster_go_proper_order, go_mask) if should_use]
 
-        #cluster_df['labels'] = labels_np
+        print('Calculating baseline metrics')
+        val_df_y_np = val_df['labels'].to_numpy()
+        rand_df_y_np = create_random_baseline(val_df['labels'].to_numpy())
+        roc_auc_score_mac_base = metrics.roc_auc_score(val_df_y_np, rand_df_y_np, average='macro')
+        roc_auc_score_w_base = metrics.roc_auc_score(val_df_y_np, rand_df_y_np, average='weighted')
+        auprc_mac_base = metrics.average_precision_score(val_df_y_np, rand_df_y_np)
+        auprc_w_base = metrics.average_precision_score(val_df_y_np, rand_df_y_np, average='weighted')
 
         print('Saving parquet to tmp')
         traintest_df_path = tmp_dir + '/traintest_' + self.dataset_name + '-' + cluster_name + '.parquet'
@@ -291,7 +317,13 @@ class Dataset:
             'id': loaded_ids,
             'go': cluster_go_proper_order,
             'traintest_path': traintest_df_path,
-            'val_path': val_df_path
+            'val_path': val_df_path,
+            'baseline_metrics':{
+                'roc_auc_score_mac': roc_auc_score_mac_base,
+                'roc_auc_score_w': roc_auc_score_w_base,
+                'auprc_mac': auprc_mac_base,
+                'auprc_w': auprc_w_base
+            }
         }
         
         return cluster

@@ -33,8 +33,10 @@ if __name__ == '__main__':
     model_obj = train_crossval_node(params_dict, features, n_folds=n_folds)
     val_path = node['val_path']
     go_labels = node['go']
+    basilines = node['baseline_metrics']
     print(model_obj.stats)
-    results, validation_solved_df = validate_cv_model_noretrain(model_obj, val_path, go_labels, features)
+    results, validation_solved_df = validate_cv_model_noretrain(
+        model_obj, val_path, go_labels, features, basilines)
     
     validation_solved_df.write_parquet(local_dir+'/standard_validation.parquet')
     json.dump(results, open(results_json_path, 'w'), indent=4)

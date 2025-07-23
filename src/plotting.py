@@ -299,6 +299,8 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
     node_names = []
     auprc_ws = []
     roc_auc_ws = []
+    test_fmax = []
+    val_fmax = []
     node_levels = []
     node_pos_in_level = []
     n_labels = {}
@@ -317,14 +319,20 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
             results = json.load(open(exp_results, 'r'))
             auprc_ws.append(results['validation']['AUPRC W'])
             roc_auc_ws.append(results['validation']['ROC AUC W'])
+            val_fmax.append(results['validation']['Fmax'])
+            test_fmax.append(results['test']['Fmax'])
         elif path.exists(std_results):
             results = json.load(open(std_results, 'r'))
             auprc_ws.append(results['validation']['AUPRC W'])
             roc_auc_ws.append(results['validation']['ROC AUC W'])
+            val_fmax.append(results['validation']['Fmax'])
+            test_fmax.append(results['test']['Fmax'])
         else:
             #print('No results at', exp_results)
             auprc_ws.append(None)
             roc_auc_ws.append(None)
+            val_fmax.append(None)
+            test_fmax.append(None)
     
     y_positions = []
     for i in range(len(node_levels)):
@@ -349,22 +357,28 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
     proteins_max = max(n_proteins)
     labels_min = min([x for x in n_labels.values()])
     labels_max = max([x for x in n_labels.values()])
+    fmax_max = max(test_fmax + val_fmax)
     m1 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=auprc_min, vmax=1.0), 
         cmap=cm.seismic_r)
     m2 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=proteins_min, vmax=proteins_max), 
         cmap=cm.seismic)
     m3 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=labels_min, vmax=labels_max), 
         cmap=cm.seismic)
+    m4 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=0.0, vmax=fmax_max), 
+        cmap=cm.seismic)
     plot_w = 5.5
     plot_h = 11
     fig1, ax1 = plt.subplots(1,1, figsize=(plot_w,plot_h))
     fig2, ax2 = plt.subplots(1,1, figsize=(plot_w,plot_h))
     fig3, ax3 = plt.subplots(1,1, figsize=(plot_w,plot_h))
+    fig4, ax4 = plt.subplots(1,1, figsize=(plot_w,plot_h))
+    fig5, ax5 = plt.subplots(1,1, figsize=(plot_w,plot_h))
 
-    metrics_labels = ['AUPRC Weighted', 'Proteins for Train/test', 'GO IDs Predicted']
-    axes = [ax1, ax2, ax3]
-    figs = [fig1, fig2, fig3]
-    color_maps = [m1, m2, m3]
+    metrics_labels = ['AUPRC Weighted', 'Proteins for Train/test', 'GO IDs Predicted',
+                      'Cross Validation Fmax', 'Validation Set Fmax']
+    axes = [ax1, ax2, ax3, ax4, ax5]
+    figs = [fig1, fig2, fig3, fig4, fig5]
+    color_maps = [m1, m2, m3, m4, m4]
 
     for ax in axes:
         ax.scatter(x_positions, y_positions, c='white')
@@ -376,10 +390,14 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
         n_go_ids = n_labels[label]
         traintest_proteins = n_proteins[index]
         current_auprcw = auprc_ws[index]
+        current_tfmax = test_fmax[index]
+        current_vfmax = val_fmax[index]
         
         node_color1 = m1.to_rgba(current_auprcw) if current_auprcw is not None else 'white'
         node_color2 = m2.to_rgba(traintest_proteins)
         node_color3 = m3.to_rgba(n_go_ids)
+        node_color4 = m4.to_rgba(current_tfmax)
+        node_color5 = m4.to_rgba(current_vfmax)
         
         node_pos = (x_pos, y_pos)
         node_w = 0.25
@@ -393,12 +411,20 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
         node_circle3 = patches.Ellipse(node_pos, node_w, node_h, 
             linewidth=2, facecolor=node_color3, edgecolor='black')
         ax3.add_patch(node_circle3)
+        node_circle4 = patches.Ellipse(node_pos, node_w, node_h, 
+            linewidth=2, facecolor=node_color4, edgecolor='black')
+        ax4.add_patch(node_circle4)
+        node_circle5 = patches.Ellipse(node_pos, node_w, node_h, 
+            linewidth=2, facecolor=node_color5, edgecolor='black')
+        ax5.add_patch(node_circle5)
     
     #ax.get_xaxis().set_visible(False)
     #ax.set_xscale('log', base=30)
     min_maxes = [(auprc_min, 1.0), 
         (proteins_min, proteins_max), 
-        (labels_min, labels_max)]
+        (labels_min, labels_max),
+        (0.0, fmax_max),
+        (0.0, fmax_max)]
     for fig, ax, label, m, min_max in zip(figs, axes, metrics_labels, color_maps, min_maxes):
         ax.set_ylabel("Gene Ontology Level", fontsize=14)
         #ax.set_xlabel("Models in Layer", fontsize=18)

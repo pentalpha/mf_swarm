@@ -7,6 +7,7 @@ from pickle import load, dump
 os.environ["KERAS_BACKEND"] = "tensorflow"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
+from custom_statistics import faster_fmax, norm_with_baseline
 import keras
 from sklearn import metrics
 
@@ -197,12 +198,16 @@ class CrossValRunner():
         #print('objective_func finish', file=sys.stderr)
         return model_obj.stats
 
-def validate_cv_model_noretrain(annot_model, val_path, go_labels, features):
+def validate_cv_model_noretrain(annot_model, val_path, go_labels, features, baseline_values):
     val_df = pl.read_parquet(val_path)
     val_x_np = []
     for col in features:
         val_x_np.append(val_df[col].to_numpy())
     val_df_y_np = val_df['labels'].to_numpy()
+    roc_auc_score_mac_base = baseline_values['roc_auc_score_mac']
+    roc_auc_score_w_base = baseline_values['roc_auc_score_w']
+    auprc_mac_base = baseline_values['auprc_mac']
+    auprc_w_base = baseline_values['auprc_w']
 
     validations = []
     test_stats_vec = annot_model.stats_dicts + [annot_model.stats]
@@ -210,44 +215,35 @@ def validate_cv_model_noretrain(annot_model, val_path, go_labels, features):
     val_y_pred = None
     for model, stats in zip(basemodels_and_ensemble, test_stats_vec):
         val_y_pred = model.predict(val_x_np, verbose=0)
-        acc = np.mean(keras.metrics.binary_accuracy(val_df_y_np, val_y_pred).numpy())
+        fmax, bestrh = faster_fmax(val_y_pred, val_df_y_np)
         roc_auc_score_mac = metrics.roc_auc_score(val_df_y_np, val_y_pred, average='macro')
         roc_auc_score_w = metrics.roc_auc_score(val_df_y_np, val_y_pred, average='weighted')
         auprc_mac = metrics.average_precision_score(val_df_y_np, val_y_pred)
         auprc_w = metrics.average_precision_score(val_df_y_np, val_y_pred, average='weighted')
-        print(roc_auc_score_w)
-        y_pred_05 = (val_y_pred > 0.5).astype(int)
-        y_pred_06 = (val_y_pred > 0.6).astype(int)
-        f1_score = metrics.f1_score(val_df_y_np, y_pred_05, average='macro')
-        f1_score_w_05 = metrics.f1_score(val_df_y_np, y_pred_05, average='weighted')
-        f1_score_w_06 = metrics.f1_score(val_df_y_np, y_pred_06, average='weighted')
-        recall_score = metrics.recall_score(val_df_y_np, y_pred_05, average='macro')
-        recall_score_w_05 = metrics.recall_score(val_df_y_np, y_pred_05, average='weighted')
-        recall_score_w_06 = metrics.recall_score(val_df_y_np, y_pred_06, average='weighted')
-        precision_score = metrics.precision_score(val_df_y_np, y_pred_05, average='macro')
-        precision_score_w_05 = metrics.precision_score(val_df_y_np, y_pred_05, average='weighted')
-        precision_score_w_06 = metrics.precision_score(val_df_y_np, y_pred_06, average='weighted')
+        roc_auc_score_mac_norm = norm_with_baseline(roc_auc_score_mac, roc_auc_score_mac_base)
+        roc_auc_score_w_norm = norm_with_baseline(roc_auc_score_w, roc_auc_score_w_base)
+        auprc_mac_norm = norm_with_baseline(auprc_mac, auprc_mac_base)
+        auprc_w_norm = norm_with_baseline(auprc_w, auprc_w_base)
         
-        val_stats = {'ROC AUC': float(roc_auc_score_mac),
-            'ROC AUC W': float(roc_auc_score_w),
-            'AUPRC': float(auprc_mac),
-            'AUPRC W': float(auprc_w),
-            'Accuracy': float(acc), 
-            'f1_score': f1_score,
-            'f1_score_w_05': f1_score_w_05,
-            'f1_score_w_06': f1_score_w_06,
-            'recall_score': recall_score,
-            'recall_score_w_05': recall_score_w_05,
-            'recall_score_w_06': recall_score_w_06,
-            'precision_score': precision_score,
-            'precision_score_w_05': precision_score_w_05,
-            'precision_score_w_06': precision_score_w_06,
+        val_stats = {
+            'raw':{
+                'ROC AUC': float(roc_auc_score_mac),
+                'ROC AUC W': float(roc_auc_score_w),
+                'AUPRC': float(auprc_mac),
+                'AUPRC W': float(auprc_w),
+            },
+            'ROC AUC': float(roc_auc_score_mac_norm),
+            'ROC AUC W': float(roc_auc_score_w_norm),
+            'AUPRC': float(auprc_mac_norm),
+            'AUPRC W': float(auprc_w_norm),
+            'Fmax': float(fmax),
+            'Best Fmax Threshold': float(bestrh),
             'val_x': len(val_df),
             'quickness': stats['quickness']
         }
 
-        metric_weights = [('ROC AUC W', 4), ('AUPRC', 4), 
-                        ('quickness', 1)]
+        metric_weights = [('Fmax', 4), ('ROC AUC W', 4), ('AUPRC W', 4), 
+                        ('quickness', 2)]
         w_total = sum([w for m, w in metric_weights])
         val_stats['fitness'] = sum([val_stats[m]*w for m, w in metric_weights]) / w_total
         validations.append(val_stats)
@@ -274,9 +270,11 @@ def validate_cv_model(node, solution_dict, features, n_folds=5):
     annot_model = train_crossval_node(node, features, n_folds=n_folds)
     print('Validating')
     val_path = node['node']['val_path']
+    baseline_values = node['node']['baseline_metrics']
     go_labels = node['node']['go']
     
     results, validation_solved_df = validate_cv_model_noretrain(
-        annot_model, val_path, go_labels, features)
+        annot_model, val_path, go_labels, features,
+        baseline_values=baseline_values)
     
     return annot_model, results, validation_solved_df

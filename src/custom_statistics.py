@@ -2,7 +2,78 @@ import json
 from os import path
 from glob import glob
 import sys
+
 import matplotlib.pyplot as plt
+import numpy as np
+from glob import glob
+from tqdm import tqdm
+from sklearn.metrics import precision_score, recall_score
+
+#SKLearn implementation of the Fmax metric
+def fast_fmax(pred_scores, truth_set, thresholds=None):
+    if thresholds is None:
+        thresholds = np.linspace(0, 1, 80)
+        print('thresholds:', thresholds)
+    best_fmax = 0.0
+    best_th = 0.0
+    for th in tqdm(thresholds):
+        pred_bin = (pred_scores > th).astype(int)
+        # Vetorizado: calcula média por proteína (sample average)
+        rec = recall_score(truth_set, pred_bin, average='samples', zero_division=0)
+        prec = precision_score(truth_set, pred_bin, average='samples', zero_division=0)
+        if rec + prec > 0:
+            f = 2 * prec * rec / (prec + rec)
+        else:
+            f = 0.0
+        if f > best_fmax:
+            best_fmax = f
+            best_th = th
+            print(best_fmax, best_th)
+    return best_fmax, best_th
+
+#Numpy implementation of the Fmax metric
+def faster_fmax(pred_scores, truth_set, thresholds=None):
+    if thresholds is None:
+        thresholds = np.linspace(0, 1, 120)
+    # pred_scores: (n_samples, n_labels)
+    # truth_set: (n_samples, n_labels)
+    n_samples, n_labels = pred_scores.shape
+    n_thresh = len(thresholds)
+    # Cria matriz booleana para todos os thresholds: shape (n_thresh, n_samples, n_labels)
+    pred_bin = (pred_scores[None, :, :] > thresholds[:, None, None]).astype(np.uint8)
+    truth = truth_set[None, :, :].astype(np.uint8)
+
+    # True positives, false positives, false negatives para cada threshold
+    tp = np.sum(pred_bin & truth, axis=2)  # shape (n_thresh, n_samples)
+    fp = np.sum(pred_bin & (~truth), axis=2)
+    fn = np.sum((~pred_bin) & truth, axis=2)
+
+    # Precisão e recall por amostra e threshold
+    with np.errstate(divide='ignore', invalid='ignore'):
+        prec = np.where(tp + fp > 0, tp / (tp + fp), 0)
+        rec = np.where(tp + fn > 0, tp / (tp + fn), 0)
+
+    # Média por amostra (samples), depois média por threshold
+    prec_mean = np.mean(prec, axis=1)
+    rec_mean = np.mean(rec, axis=1)
+
+    # F-score para cada threshold
+    with np.errstate(divide='ignore', invalid='ignore'):
+        f = np.where(prec_mean + rec_mean > 0, 2 * prec_mean * rec_mean / (prec_mean + rec_mean), 0)
+
+    best_idx = np.argmax(f)
+    best_fmax = f[best_idx]
+    best_th = thresholds[best_idx]
+    return float(best_fmax), float(best_th)
+
+def norm_with_baseline(metric_val, metric_baseline, max_value = 1.0):
+    actual_range = max_value - metric_baseline
+    actual_zero = metric_baseline
+    metric_norm = (metric_val - actual_zero) / actual_range
+    return metric_norm
+
+def create_random_baseline(val_y_pred) -> np.ndarray:
+    return np.random.rand(*val_y_pred.shape)
 
 def load_swarm_params_and_results_jsons(full_swarm_exp_dir):
     node_dirs = glob(full_swarm_exp_dir + '/Level-*')

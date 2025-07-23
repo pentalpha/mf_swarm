@@ -4,6 +4,7 @@ import os
 from os import path
 import random
 import sys
+from custom_statistics import faster_fmax
 import polars as pl
 import numpy as np
 from pickle import load, dump
@@ -231,47 +232,25 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     epochs_norm2 = 1.0 - epochs_norm
     #print('Testing')
     y_pred = model.predict(x_test_vec, verbose=0)
-    #roc_auc_score = metrics.roc_auc_score(test_y, y_pred)
+    
     roc_auc_score_mac = metrics.roc_auc_score(test_y, y_pred, average='macro')
     roc_auc_score_w = metrics.roc_auc_score(test_y, y_pred, average='weighted')
-    
     auprc_mac = metrics.average_precision_score(test_y, y_pred)
     auprc_w = metrics.average_precision_score(test_y, y_pred, average='weighted')
-    acc = np.mean(keras.metrics.binary_accuracy(test_y, y_pred).numpy())
 
-    y_pred_04 = (y_pred > 0.4).astype(int)
-    y_pred_05 = (y_pred > 0.5).astype(int)
-    y_pred_06 = (y_pred > 0.6).astype(int)
-    f1_score = metrics.f1_score(test_y, y_pred_05, average='macro')
-    f1_score_w_05 = metrics.f1_score(test_y, y_pred_05, average='weighted')
-    f1_score_w_06 = metrics.f1_score(test_y, y_pred_06, average='weighted')
-    recall_score = metrics.recall_score(test_y, y_pred_05, average='macro')
-    recall_score_w_05 = metrics.recall_score(test_y, y_pred_05, average='weighted')
-    recall_score_w_06 = metrics.recall_score(test_y, y_pred_06, average='weighted')
-    precision_score = metrics.precision_score(test_y, y_pred_05, average='macro')
-    precision_score_w_05 = metrics.precision_score(test_y, y_pred_05, average='weighted')
-    precision_score_w_06 = metrics.precision_score(test_y, y_pred_06, average='weighted')
+    fmax, bestrh = faster_fmax(y_pred, test_y)
     test_stats = {
         'ROC AUC': float(roc_auc_score_mac),
         'ROC AUC W': float(roc_auc_score_w),
         'AUPRC': float(auprc_mac),
         'AUPRC W': float(auprc_w),
-        'Accuracy': float(acc), 
-        'f1_score': f1_score,
-        'f1_score_w_05': f1_score_w_05,
-        'f1_score_w_06': f1_score_w_06,
-        'recall_score': recall_score,
-        'recall_score_w_05': recall_score_w_05,
-        'recall_score_w_06': recall_score_w_06,
-        'precision_score': precision_score,
-        'precision_score_w_05': precision_score_w_05,
-        'precision_score_w_06': precision_score_w_06,
+        'Fmax': float(fmax),
+        'Best Fmax Threshold': float(bestrh),
         'Proteins': len(train_y) + len(test_y),
         'quickness': epochs_norm2
     }
 
-    metric_weights = [('ROC AUC W', 4), ('AUPRC', 4), 
-                      ('quickness', 1)]
+    metric_weights = [('Fmax', 4), ('ROC AUC W', 4), ('AUPRC W', 4), ('quickness', 2)]
     w_total = sum([w for m, w in metric_weights])
     test_stats['fitness'] = sum([test_stats[m]*w for m, w in metric_weights]) / w_total
 
