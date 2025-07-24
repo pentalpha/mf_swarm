@@ -10,6 +10,7 @@ from metaheuristics import ProblemTranslator
 from create_dataset import Dataset, find_latest_dataset, find_or_create_dataset
 from dimension_db import DimensionDB
 from plotting import draw_swarm_panel
+from swarm import Swarm
 from util_base import proj_dir, run_command, create_params_for_features, general_configs
 
 
@@ -169,7 +170,7 @@ if __name__ == '__main__':
     print(sys.argv)
 
     dataset_type = 'full_swarm'
-    dataset = find_or_create_dataset(datasets_dir, dataset_type, min_proteins_per_mf, 
+    dataset, dimension_db = find_or_create_dataset(datasets_dir, dataset_type, min_proteins_per_mf, 
         dimension_db_release_n, dimension_db_releases_dir, val_perc)
     
     feature_list = ['taxa_256', 'ankh_base', 'esm2_t33']
@@ -209,3 +210,95 @@ if __name__ == '__main__':
     plots_dir = local_dir+'/plots'
     run_command(['mkdir -p', plots_dir])
     draw_swarm_panel(local_dir, plots_dir)
+
+    new_swarm = Swarm(local_dir, dimension_db.go_basic_path)
+    df, go_final_seq, val_df, val_go_final_seq = new_swarm.make_all_predictions(dimension_db)
+    
+    '''
+    import numpy as np
+    import polars as pl
+    from sklearn.model_selection import train_test_split
+    from sklearn.ensemble import RandomForestRegressor
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.metrics import r2_score
+    from sklearn import metrics
+    from tqdm import tqdm
+
+#%%
+
+n_proteins = 15000
+scores_per_line = 120
+
+raw_df = pl.read_parquet(new_swarm.raw_scores_path)
+scores_matrix = raw_df['scores'].to_numpy()
+labels_matrix = raw_df['labels'].to_numpy()
+protein_indexes = np.random.choice(scores_matrix.shape[0], size=n_proteins, replace=False)
+scores_matrix = scores_matrix[protein_indexes]
+
+print('Creating features and labels')
+feature_lines = []
+feature_names = ['dist_to_root', 'current_score', 'top_min', 'top_q1', 'top_q2', 'top_q3', 'top_max',
+    'bottom_min', 'bottom_q1', 'bottom_q2', 'bottom_q3', 'bottom_max']
+correct_scores = []
+for i in tqdm(range(scores_matrix.shape[0])):
+    prot_scores = scores_matrix[i]
+    correct_preds = labels_matrix[i]
+    positive_indexes = [go_id_index for go_id_index, val in enumerate(correct_preds) if val == 1]
+    max_positives = int(scores_per_line / 2)
+    if len(positive_indexes) > max_positives:
+        #print(positive_indexes)
+        #print(max_positives)
+        positive_indexes2 = list(np.random.choice(positive_indexes, size=max_positives, replace=False))
+    else:
+        positive_indexes2 = positive_indexes
+    positive_indexes = positive_indexes2
+    n_negatives = len(positive_indexes)*2
+    neg_indexes = [go_id_index for go_id_index, val in enumerate(correct_preds) if val == 0]
+    neg_indexes = list(np.random.choice(neg_indexes, size=n_negatives, replace=False))
+    all_indexes = positive_indexes + neg_indexes
+    
+    for go_id_index in all_indexes:
+        go_id = new_swarm.go_id_sequence[go_id_index]
+        top_indexes = new_swarm.go_descendants_indexes[go_id]
+        bottom_indexes = new_swarm.go_ancestors_indexes[go_id]
+        top_scores = prot_scores[top_indexes]
+        bottom_scores = prot_scores[bottom_indexes]
+        if len(top_scores) > 0:
+            top_features = [np.min(top_scores), np.quantile(top_scores, 0.25), np.quantile(top_scores, 0.5), np.quantile(top_scores, 0.75), np.max(top_scores)]
+        else:
+            top_features = [0, 0, 0, 0, 0]
+        if len(bottom_scores) > 0:
+            bottom_features = [np.min(bottom_scores), np.quantile(bottom_scores, 0.25), np.quantile(bottom_scores, 0.5), np.quantile(bottom_scores, 0.75), np.max(bottom_scores)]
+        else:
+            bottom_features = [0, 0, 0, 0, 0]
+        feature_line = [new_swarm.go_distances_to_root[go_id], prot_scores[go_id_index]] + top_features + bottom_features
+        feature_lines.append(np.array(feature_line))
+        correct_scores.append(correct_preds[go_id_index])
+
+feature_lines = np.asarray(feature_lines)
+correct_scores = np.asarray(correct_scores)
+print('Features matrix shape:', feature_lines.shape)
+print('Labels matrix shape:', correct_scores.shape)
+df_path = 'tmp/final_node_df.parquet'
+df = pl.DataFrame({'features': feature_lines,
+    'labels': correct_scores})
+df.write_parquet(df_path)
+#%%
+print('Split data and train RandomForestRegressor')
+df = pl.read_parquet(df_path)
+feature_lines = df['features'].to_numpy()
+correct_scores = df['labels'].to_numpy()
+X_train, X_test, y_train, y_test = train_test_split(feature_lines, correct_scores, test_size=0.2, random_state=42)
+pred_scores = X_test[:, 1]
+#%%
+for a in range(100):
+    pred_bool = pred_scores > a/100
+    f1 = metrics.f1_score(y_test, pred_bool)
+    print('Base f1:', f1)
+#%%
+rf = RandomForestClassifier(n_estimators=100, random_state=1337, n_jobs=30)
+print('Fitting')
+rf.fit(X_train, y_train)
+y_pred = rf.predict(X_test)
+print('Test R^2:', r2_score(y_test, y_pred))
+    '''

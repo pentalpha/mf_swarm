@@ -567,10 +567,10 @@ def find_or_create_dataset(datasets_dir, dataset_type, min_proteins_per_mf,
     matching_dataset_path = find_latest_dataset(datasets_dir, dataset_type, 
                                             min_proteins_per_mf, dimension_db_release_n,
                                             val_perc)
+    dimension_db = DimensionDB(dimension_db_releases_dir, dimension_db_release_n, new_downloads=True)
     if matching_dataset_path is not None:
         dataset = Dataset(dataset_path=matching_dataset_path)
     else:
-        dimension_db = DimensionDB(dimension_db_releases_dir, dimension_db_release_n, new_downloads=True)
         dataset = Dataset(dimension_db=dimension_db, 
                       min_proteins_per_mf=min_proteins_per_mf, 
                       dataset_type=dataset_type,
@@ -579,7 +579,7 @@ def find_or_create_dataset(datasets_dir, dataset_type, min_proteins_per_mf,
     if dataset.new_dataset:
         dataset.save(datasets_dir)
     
-    return dataset
+    return dataset, dimension_db
 
 if __name__ == "__main__":
     dimension_db_releases_dir = sys.argv[1]

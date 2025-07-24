@@ -7,7 +7,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 from glob import glob
 from tqdm import tqdm
+import polars as pl
 from sklearn.metrics import precision_score, recall_score
+from sklearn import metrics
 
 #SKLearn implementation of the Fmax metric
 def fast_fmax(pred_scores, truth_set, thresholds=None):
@@ -132,6 +134,62 @@ def draw_cv_relevance(full_swarm_exp_dir: str, output_dir: str):
     plt.tight_layout()
     plt.savefig(path.join(output_dir, 'cv_relevance_boxplot.png'))
     plt.close()
+
+def eval_predictions_dataset(df: pl.DataFrame, truth_col = 'labels', scores_col='scores'):
+    ids_list = df['id'].to_list()
+    true_labels_f = df[truth_col].to_numpy()
+    val_y_pred_f = df[scores_col].to_numpy()
+
+    baseline_pred_f = np.random.rand(*val_y_pred_f.shape)
+
+    print('True labels:')
+    print(true_labels_f)
+    print('Scores:')
+    print(val_y_pred_f)
+    print('Baseline:')
+    print(baseline_pred_f)
+    print('Comparing')
+    fmax, bestrh = faster_fmax(val_y_pred_f, true_labels_f)
+    print(fmax, bestrh)
+    roc_auc_score_mac = metrics.roc_auc_score(true_labels_f, val_y_pred_f, average='macro')
+    roc_auc_score_mac_base = metrics.roc_auc_score(true_labels_f, baseline_pred_f, average='macro')
+    roc_auc_score_mac_norm = norm_with_baseline(roc_auc_score_mac, roc_auc_score_mac_base)
+    print(roc_auc_score_mac, roc_auc_score_mac_norm)
+    roc_auc_score_w = metrics.roc_auc_score(true_labels_f, val_y_pred_f, average='weighted')
+    roc_auc_score_w_base = metrics.roc_auc_score(true_labels_f, baseline_pred_f, average='weighted')
+    roc_auc_score_w_norm = norm_with_baseline(roc_auc_score_w, roc_auc_score_w_base)
+    print(roc_auc_score_w, roc_auc_score_w_norm)
+    auprc_mac = metrics.average_precision_score(true_labels_f, val_y_pred_f)
+    auprc_mac_base = metrics.average_precision_score(true_labels_f, baseline_pred_f)
+    auprc_mac_norm = norm_with_baseline(auprc_mac, auprc_mac_base)
+    print(auprc_mac, auprc_mac_norm)
+    auprc_w = metrics.average_precision_score(true_labels_f, val_y_pred_f, average='weighted')
+    auprc_w_base = metrics.average_precision_score(true_labels_f, baseline_pred_f, average='weighted')
+    auprc_w_norm = norm_with_baseline(auprc_w, auprc_w_base)
+    print(auprc_w, auprc_w_norm)
+    new_m = {
+        'raw':{
+            'ROC AUC': float(roc_auc_score_mac),
+            'ROC AUC W': float(roc_auc_score_w),
+            'AUPRC': float(auprc_mac),
+            'AUPRC W': float(auprc_w)
+        },
+        'ROC AUC': float(roc_auc_score_mac_norm),
+        'ROC AUC W': float(roc_auc_score_w_norm),
+        'AUPRC': float(auprc_mac_norm),
+        'AUPRC W': float(auprc_w_norm),
+        'Fmax': fmax,
+        'Best F1 Threshold': bestrh,
+        'bases': {
+            'ROC AUC': float(roc_auc_score_mac_base),
+            'ROC AUC W': float(roc_auc_score_w_base),
+            'AUPRC': float(auprc_mac_base),
+            'AUPRC W': float(auprc_w_base),
+        },
+        'N Proteins': len(ids_list)
+    }
+
+    return new_m
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:
