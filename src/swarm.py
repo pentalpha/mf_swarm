@@ -17,6 +17,7 @@ from create_dataset import Dataset
 from custom_statistics import eval_predictions_dataset
 from dimension_db import DimensionDB
 from parquet_loading import VectorLoader
+from util_base import run_command
 
 
 class Node():
@@ -88,11 +89,11 @@ def join_prediction_dfs_no_nodes(df_paths: List[str], go_lists: List[str], score
         df = pl.read_parquet(df_path)
         ids = df['id'].to_list()
         score_lists = df[scores_col].to_list()
-        for uniprot, scores, protein_annots in zip(ids, score_lists):
+        for uniprot, scores in zip(ids, score_lists):
             if not uniprot in protein_scores:
                 protein_scores[uniprot] = {}
             
-            for score, local_go, true_value in zip(scores, go_list, protein_annots):
+            for score, local_go in zip(scores, go_list):
                 protein_scores[uniprot][local_go] = [score]
     print('Create final dataframe')
     df = join_protein_score_dicts(protein_scores, final_go_seq, has_annots=False)
@@ -266,7 +267,9 @@ class Swarm:
     def make_all_predictions(self, dimension_db: DimensionDB):
         traintest_set, val_set, filtered_ann, go_freqs = dimension_db.get_proteins_set(
             self.configs['min_proteins_per_mf'], self.configs['val_perc'])
+        
         parquet_loader = VectorLoader(dimension_db.release_dir)
+        run_command(['mkdir', '-p', self.predictions_traintest_dir, self.predictions_val_dir])
         traintest_parquet_path = self.predictions_traintest_dir + '/mean_scores.parquet'
         val_parquet_path = self.predictions_val_dir + '/mean_scores.parquet'
         traintest_list = list(traintest_set)

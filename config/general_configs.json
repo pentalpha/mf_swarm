@@ -1,13 +1,13 @@
 {
     "dimension_db_release_n": "1",
-    "dimension_db_releases_dir": "~/data/protein_dimension_db/",
-    "datasets_dir": "~/data/mf_swarm_datasets/",
+    "dimension_db_releases_dir": "~/data/dimension_db/",
+    "datasets_dir": "~/data/mf_datasets/",
     "min_proteins_per_mf": "40",
     "val_perc": "0.15",
-    "optimization_dir": "~/data/mf_swarm_train/",
+    "optimization_dir": "~/experiments/mf_swarm/full_swarm",
     "pop_size": 14,
     "n_jobs": 1,
     "gens": 2,
     "top_perc": 0.6,
-    "n_to_optimize": 6
+    "n_to_optimize": 0
 }

@@ -13,21 +13,8 @@ from sklearn import metrics
 
 from util_base import concat_lists, run_command
 from parquet_loading import load_columns_from_parquet
-from node_factory import makeMultiClassifierModel, split_into_n_parts, split_train_test_polars
+from node_factory import makeMultiClassifierModel
 import polars as pl
-
-class BasicEnsemble():
-    def __init__(self, model_list, stats_dicts) -> None:
-        self.models = model_list
-        self.stats_dicts = stats_dicts
-        self.stats = {}
-        for k in stats_dicts[0].keys():
-            self.stats[k] = round(np.mean([d[k] for d in stats_dicts]), 5)
-    
-    def predict(self, x, verbose=0):
-        results = [m.predict(x) for m in self.models]
-        results_mean = np.mean(results, axis=0)
-        return results_mean
     
 def split_train_test_n_folds(traintest_path, features, max_proteins=60000):
     #Make sure the dataset is prepared as train_x, train_y, test_x and test_y binary files
