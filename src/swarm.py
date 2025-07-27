@@ -40,8 +40,8 @@ class Node():
         del self.basic_ensemble
 
     def predict_scores(self, feature_lists, autounload=True):
-        if self.basic_ensemble is None:
-            self.load_model()
+        #if self.basic_ensemble is None:
+        self.load_model()
         base_model_results = [m.predict(feature_lists) 
             for m in self.basic_ensemble.models]
         results_mean = np.mean(base_model_results, axis=0)

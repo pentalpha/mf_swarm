@@ -208,7 +208,9 @@ class Dataset:
         non_cluster_ids = [p for p in dimension_db.ids if p not in cluster_ann]
         cluster_gos_set = set(cluster_gos)
         print('Creating DF', cluster_name, 'with', len(cluster_ids), 'proteins')
-        traintest_ids = set(cluster_ids).intersection(traintest_set)
+        val_ids = list(val_set)
+        traintest_ids = list(traintest_set)
+        '''traintest_ids = set(cluster_ids).intersection(traintest_set)
         negative_samples_n = int(len(traintest_ids) * 0.2)
         if negative_samples_n < len(non_cluster_ids):
             negative_samples = random.sample(non_cluster_ids, negative_samples_n)
@@ -225,7 +227,7 @@ class Dataset:
         if max_proteins_traintest:
             if len(traintest_ids) > max_proteins_traintest:
                 traintest_ids = self.sample_proteins(max_proteins_traintest, traintest_ids, cluster_gos,
-                    cluster_ann)
+                    cluster_ann)'''
         
         print('Counting proteins at each class')
         ann_by_go = {goid: {'traintest': [], 'val': []} for goid in cluster_gos_set}

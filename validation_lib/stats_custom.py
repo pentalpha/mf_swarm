@@ -31,13 +31,16 @@ def fast_fmax(pred_scores, truth_set, thresholds=None):
 def faster_fmax(pred_scores, truth_set, thresholds=None):
     if thresholds is None:
         thresholds = np.linspace(0, 1, 80)
-    # pred_scores: (n_samples, n_labels)
-    # truth_set: (n_samples, n_labels)
-    n_samples, n_labels = pred_scores.shape
+    has_positives = np.any(truth_set, axis=1)  # Boolean mask (n_samples,)
+    pred_scores_filtered = pred_scores[has_positives]
+    truth_set_filtered = truth_set[has_positives]
+    # pred_scores_filtered: (n_samples, n_labels)
+    # truth_set_filtered: (n_samples, n_labels)
+    n_samples, n_labels = pred_scores_filtered.shape
     n_thresh = len(thresholds)
     # Cria matriz booleana para todos os thresholds: shape (n_thresh, n_samples, n_labels)
-    pred_bin = (pred_scores[None, :, :] > thresholds[:, None, None]).astype(np.uint8)
-    truth = truth_set[None, :, :].astype(np.uint8)
+    pred_bin = (pred_scores_filtered[None, :, :] > thresholds[:, None, None]).astype(np.uint8)
+    truth = truth_set_filtered[None, :, :].astype(np.uint8)
 
     # True positives, false positives, false negatives para cada threshold
     tp = np.sum(pred_bin & truth, axis=2)  # shape (n_thresh, n_samples)
@@ -72,7 +75,20 @@ def calc_metrics_at_freq_threshold(col_sums, true_labels, val_y_pred,
         min_freq, labels_sequence, labels_path):
     print('min freq:', min_freq)
     valid_cols = col_sums > min_freq
-
+    valid2 = col_sums < true_labels.shape[0]
+    valid_cols = np.array([a and b for a,b in zip(valid_cols, valid2)])
+    print('true_labels')
+    #print(true_labels)
+    print(true_labels.shape)
+    print('val_y_pred')
+    #print(val_y_pred)
+    print(val_y_pred.shape)
+    print('valid_cols')
+    #print(valid_cols)
+    print(valid_cols.shape)
+    print('col_sums')
+    #print(col_sums)
+    print(col_sums.shape)
     true_labels_f = true_labels[:, valid_cols]
     val_y_pred_f = val_y_pred[:, valid_cols]
     baseline_pred_f = np.random.rand(*val_y_pred_f.shape)
@@ -81,7 +97,7 @@ def calc_metrics_at_freq_threshold(col_sums, true_labels, val_y_pred,
     #val_y_pred_f_scaled = min_max_scaler.fit_transform(val_y_pred_f)
     labels_sequence_f = [label for i, label in enumerate(labels_sequence) if valid_cols[i]]
 
-    print(f"Removed {np.sum(~valid_cols)} columns with zero frequency in true_labels.")
+    print(f"Removed {np.sum(~valid_cols)} columns with low frequency in true_labels.")
 
     evaluated_label_sequence_path = labels_path.replace('.txt', f'.min_{min_freq}.evaluated.txt')
     open(evaluated_label_sequence_path, 'w').write('\n'.join(labels_sequence_f))
@@ -109,24 +125,23 @@ def calc_metrics_at_freq_threshold(col_sums, true_labels, val_y_pred,
             'ROC AUC': float(roc_auc_score_mac),
             'ROC AUC W': float(roc_auc_score_w),
             'AUPRC': float(auprc_mac),
-            'AUPRC W': float(auprc_w),
-            'Fmax': fmax,
-            'Best F1 Threshold': bestrh 
+            'AUPRC W': float(auprc_w)
         },
-        'norm': {
-            'ROC AUC': float(roc_auc_score_mac_norm),
-            'ROC AUC W': float(roc_auc_score_w_norm),
-            'AUPRC': float(auprc_mac_norm),
-            'AUPRC W': float(auprc_w_norm),
-            'bases': {
-                'ROC AUC': float(roc_auc_score_mac_base),
-                'ROC AUC W': float(roc_auc_score_w_base),
-                'AUPRC': float(auprc_mac_base),
-                'AUPRC W': float(auprc_w_base),
-            }
+        'ROC AUC': float(roc_auc_score_mac_norm),
+        'ROC AUC W': float(roc_auc_score_w_norm),
+        'AUPRC': float(auprc_mac_norm),
+        'AUPRC W': float(auprc_w_norm),
+        'Fmax': fmax,
+        'Best F1 Threshold': bestrh,
+        'bases': {
+            'ROC AUC': float(roc_auc_score_mac_base),
+            'ROC AUC W': float(roc_auc_score_w_base),
+            'AUPRC': float(auprc_mac_base),
+            'AUPRC W': float(auprc_w_base),
         },
         'N Proteins': len(true_labels_f),
         'Tool Labels': len(valid_cols),
         'Evaluated Labels': len(labels_sequence_f)
     }
+    
     return new_m

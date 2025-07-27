@@ -1,6 +1,7 @@
 import gzip
 import json
 import polars as pl
+import pandas as pd
 import numpy as np
 import sys
 from glob import glob
@@ -9,7 +10,7 @@ import os
 
 from stats_custom import calc_metrics_at_freq_threshold
 
-def calc_metrics_for_tool(df_path, experimental_annots, max_n=3000):
+def calc_metrics_for_tool(df_path, experimental_annots, max_n=16000):
     print(df_path)
     print('Loading')
     labels_path = df_path.replace('-preds.parquet', '-label_names.txt')
@@ -17,6 +18,7 @@ def calc_metrics_for_tool(df_path, experimental_annots, max_n=3000):
     df = pl.read_parquet(df_path)
     ids_list = df['id'].to_list()
     true_labels = []
+    #print(np.array(labels_sequence))
     
     print('Creating true labels')
     for uniprot in ids_list:
@@ -29,10 +31,15 @@ def calc_metrics_for_tool(df_path, experimental_annots, max_n=3000):
     else:
         true_labels = np.asarray(true_labels)
         val_y_pred = np.asarray([np.array(v) for v in val_y_pred])
-    print(val_y_pred)
+    #print(val_y_pred)
     col_sums = true_labels.sum(axis=0)
+    print(max(col_sums))
+    print(len([1 for s in col_sums if s == true_labels.shape[0]]))
+    print(true_labels.shape)
+    #quit(1)
     #freq_thresholds = [9, 7, 5, 3, 1, 0]
     freq_thresholds = [5, 3, 0]
+    #freq_thresholds = [6]
     for min_freq in freq_thresholds:
         print('min freq:', min_freq)
         print(f"Removed {np.sum(~(col_sums > min_freq))} columns with low frequency in true_labels.")
@@ -81,3 +88,14 @@ metrics_all = {}
 for df_path in tqdm(df_paths):
     metrics_all[df_path] = calc_metrics_for_tool(df_path, experimental_annots)
 json.dump(metrics_all, open(f'{others_dir}/validation_results.json', 'w'), indent=4)
+
+df_lines = []
+col = ['Fmax','AUPRC W','ROC AUC W','Tool Labels','Evaluated Labels','Best F1 Threshold','ROC AUC','AUPRC','N Proteins','bases']
+for p, by_th in metrics_all.items():
+    for th, metric_vals in by_th.items():
+        new_line = [os.path.basename(p), str(th)] + [str(metric_vals[c]) for c in col]
+        df_lines.append(new_line)
+
+df_final = pd.DataFrame(df_lines)
+df_final.columns = ['Software', 'Min. GO ID Freq.'] + col
+df_final.to_csv(f'{others_dir}/validation_results.csv', sep='\t')
