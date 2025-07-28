@@ -55,5 +55,6 @@ if __name__ == '__main__':
     final_model_ensemble, val_results, validation_solved_df = validate_cv_model(
         params_dict, solution_dict, features, n_folds=n_folds)
     validation_solved_df.write_parquet(local_dir+'/optimized_validation.parquet')
+    final_model_ensemble.save(local_dir+'/optimized_model')
     json.dump(val_results, open(results_json_path, 'w'), indent=4)
-    dump(final_model_ensemble, open(local_dir+'/optimized_model.obj', 'wb'))
+    #dump(final_model_ensemble, open(local_dir+'/optimized_model.obj', 'wb'))

@@ -1,4 +1,6 @@
-from os import path
+from glob import glob
+import json
+from os import mkdir, path
 import os
 import sys
 import numpy as np
@@ -7,13 +9,13 @@ from pickle import load, dump
 os.environ["KERAS_BACKEND"] = "tensorflow"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-from custom_statistics import faster_fmax, norm_with_baseline
-import keras
+from ml_core.custom_statistics import faster_fmax, norm_with_baseline
 from sklearn import metrics
 
 from util_base import concat_lists, run_command
 from parquet_loading import load_columns_from_parquet
-from node_factory import makeMultiClassifierModel
+from ml_core.multi_input_clf import makeMultiClassifierModel, MultiInputNet
+#from node_factory import makeMultiClassifierModel
 import polars as pl
     
 def split_train_test_n_folds(traintest_path, features, max_proteins=60000):
@@ -122,6 +124,25 @@ class BasicEnsemble():
         results = [m.predict(x) for m in self.models]
         results_mean = np.mean(results, axis=0)
         return results_mean
+    
+    def save(self, output_dir):
+        if not path.exists(output_dir):
+            mkdir(output_dir)
+        paths = [output_dir + '/fold_'+str(n) + n 
+            for n in range(len(self.models))]
+        for m, p in zip(self.models, paths):
+            m.save(p)
+        json.dump(self.stats_dicts, open(output_dir+'/stats_dicts.json'), indent=4)
+    
+    def load(models_dir):
+        fold_dirs = glob(models_dir+'/fold_')
+        fold_dirs.sort(key = lambda p: int(p.split('_')[-1]))
+
+        model_list = [MultiInputNet.load(d) for d in fold_dirs]
+        stats_dicts = json.load(open(models_dir+'/stats_dicts.json', 'r'))
+
+        return BasicEnsemble(model_list, stats_dicts)
+
 
 # Trains a node using cross-validation, returning an ensemble of models
 # The node is a dictionary with the parameters and paths to the data

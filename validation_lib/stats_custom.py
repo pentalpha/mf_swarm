@@ -28,14 +28,13 @@ def fast_fmax(pred_scores, truth_set, thresholds=None):
     return best_fmax, best_th
 
 #Numpy implementation of the Fmax metric
-def faster_fmax(pred_scores, truth_set, thresholds=None):
-    if thresholds is None:
-        thresholds = np.linspace(0, 1, 80)
+def faster_fmax(pred_scores, truth_set, n_ths=120):
+    thresholds = np.linspace(0, 1, n_ths)
+    # pred_scores: (n_samples, n_labels)
+    # truth_set: (n_samples, n_labels)
     has_positives = np.any(truth_set, axis=1)  # Boolean mask (n_samples,)
     pred_scores_filtered = pred_scores[has_positives]
     truth_set_filtered = truth_set[has_positives]
-    # pred_scores_filtered: (n_samples, n_labels)
-    # truth_set_filtered: (n_samples, n_labels)
     n_samples, n_labels = pred_scores_filtered.shape
     n_thresh = len(thresholds)
     # Cria matriz booleana para todos os thresholds: shape (n_thresh, n_samples, n_labels)

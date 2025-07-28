@@ -8,13 +8,13 @@ import random
 import sys
 import gzip
 from tqdm import tqdm
-from custom_statistics import create_random_baseline
 import obonet
 import networkx as nx
 import numpy as np
 import polars as pl
-
 from sklearn import metrics
+
+from ml_core.custom_statistics import create_random_baseline
 from dimension_db import DimensionDB
 from parquet_loading import VectorLoader
 from util_base import concat_lists, create_go_labels, run_command

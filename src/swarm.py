@@ -14,27 +14,29 @@ from sklearn.metrics import r2_score
 from tqdm import tqdm
 
 from create_dataset import Dataset
-from custom_statistics import eval_predictions_dataset
+from ml_core.custom_statistics import eval_predictions_dataset
+from ml_core.multi_input_clf import MultiInputNet
 from dimension_db import DimensionDB
 from parquet_loading import VectorLoader
 from util_base import run_command
 
 
 class Node():
-    def __init__(self, node_dir):
+    def __init__(self, node_dir, model_name='standard_model'):
         self.node_dir = node_dir
         self.name = path.basename(node_dir)
         results_path = node_dir+'/standard_results.json'
         params_path = node_dir+'/standard_params.json'
         self.params = json.load(open(params_path, 'r'))
         self.results = json.load(open(results_path, 'r'))
-        self.model_path = node_dir+'/standard_model.obj'
+        self.model_path = node_dir+'/'+model_name
         self.validation1_results_path = node_dir + '/standard_validation.parquet'
         self.protein_labels_list = self.params['node']['go']
         self.basic_ensemble = None
 
     def load_model(self):
-        self.basic_ensemble = load(open(self.model_path, 'rb'))
+        self.basic_ensemble = MultiInputNet.load(self.model_path)
+        #self.basic_ensemble = load(open(self.model_path, 'rb'))
     
     def unload_model(self):
         del self.basic_ensemble

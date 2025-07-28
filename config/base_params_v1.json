@@ -30,5 +30,6 @@
         "l1_dim": 100,
         "l2_dim": 68,
         "leakyrelu_1_alpha": 0.5447727242633195
-    }
+    },
+    "input_dims": {"taxa_256": 256, "ankh_base": 768, "esm2_t33": 1280}
 }

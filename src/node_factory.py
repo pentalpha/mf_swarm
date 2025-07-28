@@ -4,7 +4,7 @@ import os
 from os import path
 import random
 import sys
-from custom_statistics import faster_fmax
+from ml_core.custom_statistics import faster_fmax
 import polars as pl
 import numpy as np
 from pickle import load, dump

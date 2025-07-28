@@ -40,4 +40,5 @@ if __name__ == '__main__':
     
     validation_solved_df.write_parquet(local_dir+'/standard_validation.parquet')
     json.dump(results, open(results_json_path, 'w'), indent=4)
-    dump(model_obj, open(local_dir+'/standard_model.obj', 'wb'))
+    model_obj.save(local_dir+'/standard_model')
+    #dump(model_obj, open(local_dir+'/standard_model.obj', 'wb'))
