@@ -199,8 +199,9 @@ class MultiInputNet(nn.Module):
             })
             #print('Save')
             # Early stopping
-            if train_loss < best_metric_val:
-                best_metric_val = train_loss
+            if val_loss < best_metric_val:
+                best_metric_val = val_loss
+                print('Loss improvement!')
                 epochs_no_improve = 0
                 #torch.save(self.state_dict(), "best_model.pth")
             else:
@@ -239,11 +240,13 @@ class MultiInputNet(nn.Module):
         return all_preds, all_trues
     
     def predict(self, feature_vecs: List[np.ndarray], 
-            device: torch.device, verbose=True, batch_size=1000):
+            device: torch.device = None, verbose=True, batch_size=1000,):
         """
         Execução em batch do modelo.
         """
         self.eval()
+        if device == None:
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.to(device)
         all_preds = []
         n_samples = feature_vecs[0].shape[0]
@@ -289,7 +292,7 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     n_epochs = model.n_epochs
     epochs_norm = n_epochs / 100
     epochs_norm2 = 1.0 - epochs_norm
-    y_pred = model.predict([f for name, f in test_x], device, verbose=False)
+    y_pred = model.predict([f for name, f in test_x], device=device, verbose=False)
 
     roc_auc_score_mac = metrics.roc_auc_score(test_y, y_pred, average='macro')
     roc_auc_score_w = metrics.roc_auc_score(test_y, y_pred, average='weighted')

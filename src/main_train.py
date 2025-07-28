@@ -11,6 +11,7 @@ from create_dataset import Dataset, find_latest_dataset, find_or_create_dataset
 from dimension_db import DimensionDB
 from plotting import draw_swarm_panel
 from swarm import Swarm
+from train_single_node import training_process
 from util_base import proj_dir, run_command, create_params_for_features, general_configs
 
 
@@ -146,8 +147,9 @@ def run_standard_training(name: str, features: List[str], nodes: dict,
         cmd = ['python', 'src/train_single_node.py', exp_path, run_result]
         if not path.exists(run_result):
             run_command(['mkdir -p', path.dirname(run_result)])
-            print(' '.join(cmd))
-            run_command(cmd)
+            training_process(exp_path, run_result)
+            #print(' '.join(cmd))
+            #run_command(cmd)
         if not path.exists(run_result):
             print('Error: Standard training result not found for', node_name)
             quit(1)

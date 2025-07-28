@@ -10,12 +10,9 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 from cross_validation import split_train_test_n_folds, train_crossval_node, validate_cv_model_noretrain
 
-if __name__ == '__main__':
-    print(sys.argv)
-
-    params_json_path = sys.argv[1]
-    results_json_path = sys.argv[2]
+def training_process(params_json_path, results_json_path):
     local_dir = path.dirname(results_json_path)
+    print(local_dir)
 
     params_dict = json.load(open(params_json_path, 'r'))
     n_folds = params_dict['n_folds']
@@ -42,3 +39,10 @@ if __name__ == '__main__':
     json.dump(results, open(results_json_path, 'w'), indent=4)
     model_obj.save(local_dir+'/standard_model')
     #dump(model_obj, open(local_dir+'/standard_model.obj', 'wb'))
+
+if __name__ == '__main__':
+    print(sys.argv)
+
+    params_json_path = sys.argv[1]
+    results_json_path = sys.argv[2]
+    
