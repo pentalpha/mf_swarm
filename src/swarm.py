@@ -14,6 +14,7 @@ from sklearn.metrics import r2_score
 from tqdm import tqdm
 
 from create_dataset import Dataset
+from cross_validation import BasicEnsemble
 from ml_core.custom_statistics import eval_predictions_dataset
 from ml_core.multi_input_clf import MultiInputNet
 from dimension_db import DimensionDB
@@ -35,7 +36,8 @@ class Node():
         self.basic_ensemble = None
 
     def load_model(self):
-        self.basic_ensemble = MultiInputNet.load(self.model_path)
+        self.basic_ensemble = BasicEnsemble.load(self.model_path)
+        #self.basic_ensemble = MultiInputNet.load()
         #self.basic_ensemble = load(open(self.model_path, 'rb'))
     
     def unload_model(self):

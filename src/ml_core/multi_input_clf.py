@@ -283,7 +283,7 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
         train_loader=train_loader,
         val_loader=test_loader,
         n_epochs=params_dict["final"]["epochs"],
-        #n_epochs=4,
+        #n_epochs=3,
         lr=params_dict["final"]["learning_rate"],
         patience=params_dict["final"]["patience"],
         lr_decay_every=10,
