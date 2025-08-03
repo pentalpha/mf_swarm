@@ -137,7 +137,89 @@ def draw_cv_relevance(full_swarm_exp_dir: str, output_dir: str):
     plt.savefig(path.join(output_dir, 'cv_relevance_boxplot.png'))
     plt.close()
 
-def eval_predictions_dataset(df: pl.DataFrame, truth_col = 'labels', scores_col='scores'):
+def find_best_threshold_per_col(scores_matrix: np.ndarray, 
+        labels_matrix: np.ndarray, col_ids: list) -> dict:
+    # scores_matrix: (n_samples, n_labels)
+    # labels_matrix: (n_samples, n_labels)
+    # col_ids: list of label names
+    if scores_matrix.shape != labels_matrix.shape:
+        raise ValueError("Scores and labels matrices must have the same shape.")
+    n_samples, n_labels = scores_matrix.shape
+    if len(col_ids) != n_labels:
+        raise ValueError("Column IDs must match the number of labels in the matrices.")
+    best_thresholds = {}
+    for i in tqdm(range(n_labels)):
+        col_scores = scores_matrix[:, i]
+        col_labels = labels_matrix[:, i]
+        thresholds = np.linspace(0, 1, 150)
+        best_f1 = 0.0
+        best_th = 0.0
+        for th in thresholds:
+            pred_bin = (col_scores > th).astype(int)
+            rec = recall_score(col_labels, pred_bin, zero_division=0)
+            prec = precision_score(col_labels, pred_bin, zero_division=0)
+            if rec + prec > 0:
+                f1 = 2 * prec * rec / (prec + rec)
+            else:
+                f1 = 0.0
+            if f1 > best_f1:
+                best_f1 = f1
+                best_th = th
+        best_thresholds[col_ids[i]] = best_th
+        print(f"Best threshold for {col_ids[i]}: {best_th} (F1: {best_f1})")
+    return best_thresholds
+
+def eval_predictions_dataset_bool(preds_matrix_bool: np.ndarray, 
+    labels_matrix_bool: np.ndarray) -> dict:
+    # preds_matrix_bool: (n_samples, n_labels)
+    # labels_matrix_bool: (n_samples, n_labels)
+    n_samples, n_labels = preds_matrix_bool.shape
+    if preds_matrix_bool.shape != labels_matrix_bool.shape:
+        raise ValueError("Predictions and labels matrices must have the same shape.")
+    # True positives, false positives, false negatives para cada threshold
+    f1_macro = metrics.f1_score(labels_matrix_bool, preds_matrix_bool, average='macro')
+    f1_weighted = metrics.f1_score(labels_matrix_bool, preds_matrix_bool, average='weighted')
+    f1_samples = metrics.f1_score(labels_matrix_bool, preds_matrix_bool, average='samples')
+    precision_macro = metrics.precision_score(labels_matrix_bool, preds_matrix_bool, average='macro')
+    precision_weighted = metrics.precision_score(labels_matrix_bool, preds_matrix_bool, average='weighted')
+    precision_samples = metrics.precision_score(labels_matrix_bool, preds_matrix_bool, average='samples')
+    recall_samples = metrics.recall_score(labels_matrix_bool, preds_matrix_bool, average='samples')
+    recall_weighted = metrics.recall_score(labels_matrix_bool, preds_matrix_bool, average='weighted')
+    recall_macro = metrics.recall_score(labels_matrix_bool, preds_matrix_bool, average='macro')
+    f_max = faster_fmax(preds_matrix_bool, labels_matrix_bool)
+
+    return {
+        'Precision': precision_macro,
+        'Recall': recall_macro,
+        'F1': f1_macro,
+        'Precision W': precision_weighted,
+        'Recall W': recall_weighted,
+        'F1 W': f1_weighted,
+        'Precision S': precision_samples,
+        'Recall S': recall_samples,
+        'F1 S': f1_samples,
+        'Fmax': f_max[0],
+        'Best F1 Threshold': f_max[1],
+        'N Proteins': n_samples,
+        'ROC AUC': metrics.roc_auc_score(labels_matrix_bool, preds_matrix_bool, average='macro'),
+        'ROC AUC W': metrics.roc_auc_score(labels_matrix_bool, preds_matrix_bool, average='weighted'),
+        'AUPRC': metrics.average_precision_score(labels_matrix_bool, preds_matrix_bool, average='macro'),
+        'AUPRC W': metrics.average_precision_score(labels_matrix_bool, preds_matrix_bool, average='weighted'),
+    }
+
+def convert_using_col_thresholds(scores_matrix: np.ndarray, 
+                                 col_thresholds: dict, col_ids: list) -> np.ndarray:
+    bool_pred_lines = []
+    for protein_index in range(scores_matrix.shape[0]):
+        bool_pred_line = np.array([scores_matrix[protein_index, i] > col_thresholds[col_ids[i]] 
+                            for i in range(len(col_ids))])
+        bool_pred_lines.append(bool_pred_line)
+    val_y_pred_bool = np.asarray(bool_pred_lines)
+    return val_y_pred_bool
+
+def eval_predictions_dataset(df: pl.DataFrame, truth_col = 'labels', scores_col='scores', 
+        go_id_sequence=None,
+        thresholds=None) -> dict:
     ids_list = df['id'].to_list()
     true_labels_f = df[truth_col].to_numpy()
     val_y_pred_f = df[scores_col].to_numpy()
@@ -153,6 +235,21 @@ def eval_predictions_dataset(df: pl.DataFrame, truth_col = 'labels', scores_col=
     print('Comparing')
     fmax, bestrh = faster_fmax(val_y_pred_f, true_labels_f)
     print(fmax, bestrh)
+
+    if go_id_sequence != None and thresholds == None:
+        thresholds = find_best_threshold_per_col(val_y_pred_f, true_labels_f, 
+            go_id_sequence)
+    
+    if go_id_sequence != None and thresholds != None:
+        # If go_id_sequence and thresholds are provided, use them to filter scores
+        val_y_pred_bool = convert_using_col_thresholds(val_y_pred_f, thresholds, go_id_sequence)
+        bool_metrics = eval_predictions_dataset_bool(val_y_pred_bool, true_labels_f > 0)
+    else:
+        val_y_pred_bool = val_y_pred_f > bestrh
+        bool_metrics = eval_predictions_dataset_bool(val_y_pred_bool, true_labels_f > 0)
+    print('Boolean metrics:')
+    print(json.dumps(bool_metrics, indent=2))
+    
     roc_auc_score_mac = metrics.roc_auc_score(true_labels_f, val_y_pred_f, average='macro')
     roc_auc_score_mac_base = metrics.roc_auc_score(true_labels_f, baseline_pred_f, average='macro')
     roc_auc_score_mac_norm = norm_with_baseline(roc_auc_score_mac, roc_auc_score_mac_base)
@@ -176,6 +273,7 @@ def eval_predictions_dataset(df: pl.DataFrame, truth_col = 'labels', scores_col=
             'AUPRC': float(auprc_mac),
             'AUPRC W': float(auprc_w)
         },
+        'boolean': bool_metrics,
         'ROC AUC': float(roc_auc_score_mac_norm),
         'ROC AUC W': float(roc_auc_score_w_norm),
         'AUPRC': float(auprc_mac_norm),
@@ -192,6 +290,56 @@ def eval_predictions_dataset(df: pl.DataFrame, truth_col = 'labels', scores_col=
     }
 
     return new_m
+
+'''
+Calculates normalized hierarchical scores usint the DeePred methdology (Rifaioglu 2018).
+For each score, it lists the paths from it to the root. For each path to the root, the proportion
+of scores over a certain threshold is calculated. If the proportion is > 0.5, the score is
+considered a positive prediction. If most predecessors are below the threshold, the score is
+considered a negative prediction.
+
+The threshold is given by the Fmax for the model.
+'''
+def calc_deepred_scores(raw_df: pl.DataFrame, go_id_sequence: list, 
+        paths_to_root: dict, threshold: float | dict, min_prop = 0.5) -> dict:
+    scores_matrix = raw_df['scores'].to_numpy()
+    if isinstance(threshold, dict):
+        # If threshold is a dict, convert scores using the thresholds for each GO ID
+        bool_preds_matrix = convert_using_col_thresholds(scores_matrix, threshold, go_id_sequence)
+    elif isinstance(threshold, float):
+        # If threshold is a float, apply it to all scores
+        bool_preds_matrix = scores_matrix > threshold
+    else:
+        raise ValueError("Threshold must be a float or a dict with GO IDs as keys.")
+    #labels_matrix = raw_df['labels'].to_numpy()
+    if isinstance(threshold, float):
+        print('Calculating DeepPred scores for threshold:', threshold)
+    else:
+        print('Calculating DeepPred scores for GO ID specific thresholds:')
+    norm_lines = []
+    for i in tqdm(range(bool_preds_matrix.shape[0])):
+        has_go_id = bool_preds_matrix[i]
+        positive_gos = set([go_id_sequence[j] for j, v in enumerate(has_go_id) if v])
+        #correct_preds = labels_matrix[i]
+        norm_line = []
+        for go_id_index, go_id in enumerate(go_id_sequence):
+            local_result = go_id in positive_gos
+            if local_result:
+                paths = paths_to_root[go_id]
+                if paths:
+                    path_scores = [len([g for g in p if g in positive_gos]) / len(p) 
+                                for p in paths if len(p) > 0]
+                    if len(path_scores) > 0:
+                        if max(path_scores) <= min_prop:
+                            local_result = False
+            norm_line.append(local_result)
+            
+        norm_lines.append(np.array(norm_line))
+    norm_lines = np.asarray(norm_lines)
+    true_labels = raw_df['labels'].to_numpy() > 0
+    deepred_metrics = eval_predictions_dataset_bool(norm_lines, true_labels)
+    print(json.dumps(deepred_metrics, indent=2))
+    return deepred_metrics
 
 if __name__ == '__main__':
     if len(sys.argv) != 3:

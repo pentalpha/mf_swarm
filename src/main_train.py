@@ -214,7 +214,7 @@ if __name__ == '__main__':
     draw_swarm_panel(local_dir, plots_dir)
 
     new_swarm = Swarm(local_dir, dimension_db.go_basic_path)
-    df, go_final_seq, val_df, val_go_final_seq = new_swarm.make_all_predictions(dimension_db)
+    #df, go_final_seq, val_df, val_go_final_seq = new_swarm.make_all_predictions(dimension_db)
     
     '''
     import numpy as np

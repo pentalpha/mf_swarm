@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 from create_dataset import Dataset
 from cross_validation import BasicEnsemble
-from ml_core.custom_statistics import eval_predictions_dataset
+from ml_core.custom_statistics import calc_deepred_scores, eval_predictions_dataset, eval_predictions_dataset_bool, find_best_threshold_per_col
 from ml_core.multi_input_clf import MultiInputNet
 from dimension_db import DimensionDB
 from parquet_loading import VectorLoader
@@ -154,6 +154,28 @@ def go_ancestors_dict(go_id_sequence, go_network):
         go_ancestors_indexes[go_id] = [n for n, g in enumerate(go_id_sequence) if g in ancestors]
     return go_ancestors, go_ancestors_indexes
 
+def all_paths_to_root(go_id_sequence, go_network, root='GO:0003674'):
+    all_paths = {}
+    print("Calculating all paths to root")
+    for go_id in tqdm(go_id_sequence):
+        all_paths[go_id] = []
+        if go_id == root:
+            all_paths[go_id] = [root]
+        else:
+            paths = list(nx.all_simple_paths(go_network, source=go_id, target=root))
+            if paths:
+                paths_raw = [path for path in paths if len(path) > 1]
+                paths = []
+                for p in paths_raw:
+                    p.remove(root)  # Remove root from the path
+                    p.remove(go_id)  # Remove the current GO ID
+                    p2 = [x for x in p if x in go_id_sequence]  # Filter to keep only valid GO IDs
+                    if len(p2) > 0:
+                        paths.append(p2)
+                paths.sort(key=lambda x: len(x))  # Sort paths by length
+                all_paths[go_id] = paths
+    return all_paths
+
 class Swarm:
     def __init__(self, nodes_dir: str, go_network_path: str):
         assert path.exists(nodes_dir)
@@ -166,6 +188,7 @@ class Swarm:
         self.raw_metrics_path = self.swarm_dir + '/validation_results-raw_scores.txt'
         self.raw_scores_path = self.swarm_dir + '/validation-raw_scores.parquet'
         self.child_max_metrics_path = self.swarm_dir + '/validation_results-child_max_scores.txt'
+        self.parents_min_metrics_path = self.swarm_dir + '/validation_results-parents_min_scores.txt'
 
         self.predictions_traintest_dir = self.swarm_dir + '/predictions_traintest'
         self.predictions_val_dir = self.swarm_dir + '/predictions_val'
@@ -187,11 +210,47 @@ class Swarm:
         root = 'GO:0003674'
         for go_id in self.go_id_sequence:
             self.go_distances_to_root[go_id] = nx.shortest_path_length(go_network, go_id, target=root)
+        
+        self.paths_to_root_path = self.swarm_dir + '/paths_to_root.json'
+        if not path.exists(self.paths_to_root_path):
+            self.go_paths_to_root = all_paths_to_root(self.go_id_sequence, go_network, root)
+            json.dump(self.go_paths_to_root, open(self.paths_to_root_path, 'w'), indent=2)
+        self.paths_to_root = json.load(open(self.paths_to_root_path, 'r'))
 
         if not path.exists(self.child_max_metrics_path):
-            self.calc_child_max_scores()
+            self.calc_simple_hierarchical_scores(norm_method='child_max')
+        if not path.exists(self.parents_min_metrics_path):
+            self.calc_simple_hierarchical_scores(norm_method='parents_min')
         self.child_max_metrics = json.load(open(self.child_max_metrics_path))
+        self.parents_min_metrics = json.load(open(self.parents_min_metrics_path))
+
+        self.go_id_thresholds_path = self.swarm_dir + '/go_id_thresholds.json'
+        if not path.exists(self.go_id_thresholds_path):
+            raw_df = pl.read_parquet(self.raw_scores_path)
+            self.go_id_thresholds = find_best_threshold_per_col(
+                raw_df['scores'].to_numpy(), raw_df['labels'].to_numpy(), 
+                self.go_id_sequence)
+            json.dump(self.go_id_thresholds, open(self.go_id_thresholds_path, 'w'), indent=2)
+        self.go_id_thresholds = json.load(open(self.go_id_thresholds_path, 'r'))
+
+        self.raw_metrics_by_label_path = self.swarm_dir + '/raw_metrics_by_label.json'
+        if not path.exists(self.raw_metrics_by_label_path):
+            raw_metrics_best_by_label = eval_predictions_dataset(raw_df,
+                go_id_sequence=self.go_id_sequence,
+                thresholds=self.go_id_thresholds)
+            json.dump(raw_metrics_best_by_label, open(self.raw_metrics_by_label_path, 'w'), indent=2)
+        self.raw_metrics_best_by_label = json.load(open(self.raw_metrics_by_label_path, 'r'))
+        print('Raw metrics by label:')
+        print(json.dumps(self.raw_metrics_best_by_label, indent=2))
+
+        self.deepred_norm_metrics_path = self.swarm_dir + '/validation_results-deepred.txt'
+        if not path.exists(self.deepred_norm_metrics_path):
+            self.deepred_metrics = self.evaluate_deepred_normalization()
+            json.dump(self.deepred_metrics, open(self.deepred_norm_metrics_path, 'w'), indent=2)
+        self.deepred_metrics = json.load(open(self.deepred_norm_metrics_path, 'r'))
+
         self.metrics_df = self.make_metrics_df()
+        self.metrics_df = self.metrics_df.sort(by=['Curve Fmax', 'Discrete F1 W', 'Discrete Precision W'])
         self.metrics_df.write_csv(self.swarm_dir + '/metrics.csv')
             
     def analyze_raw_scores(self):
@@ -219,27 +278,109 @@ class Swarm:
             norm_lines.append(np.array(new_prot_scores))
         return np.asarray(norm_lines)
     
-    def calc_child_max_scores(self):
+    def normalized_scores_parents_min(self, scores_matrix: np.ndarray):
+        norm_lines = []
+        for i in tqdm(range(scores_matrix.shape[0])):
+            prot_scores = scores_matrix[i]
+            new_prot_scores = []
+            for index, go_id in enumerate(self.go_id_sequence):
+                ancestors_indexes = self.go_ancestors_indexes[go_id]
+                if len(ancestors_indexes) > 0:
+                    new_score = min(prot_scores[ancestors_indexes])
+                else:
+                    new_score = prot_scores[index]
+                new_prot_scores.append(new_score)
+            norm_lines.append(np.array(new_prot_scores))
+        return np.asarray(norm_lines)
+    
+    def calc_simple_hierarchical_scores(self, norm_method='child_max'):
         raw_df = pl.read_parquet(self.raw_scores_path)
         scores_matrix = raw_df['scores'].to_numpy()
         print('Normalizing scores')
-        norm_scores_matrix = self.normalized_scores_child_max(scores_matrix)
+        if norm_method == 'child_max':
+            norm_scores_matrix = self.normalized_scores_child_max(scores_matrix)
+        elif norm_method == 'parents_min':
+            norm_scores_matrix = self.normalized_scores_parents_min(scores_matrix)
         print('Evaluating child max scores')
         raw_df = raw_df.with_columns(pl.Series('scores', norm_scores_matrix))
         child_max_metrics = eval_predictions_dataset(raw_df)
         print('Child Max Metrics:')
         print(json.dumps(child_max_metrics, indent=2))
-        json.dump(child_max_metrics, open(self.child_max_metrics_path, 'w'))
+        child_max_metrics['norm_method'] = norm_method
+        if norm_method == 'child_max':
+            save_path = self.child_max_metrics_path
+        elif norm_method == 'parents_min':
+            save_path = self.parents_min_metrics_path
+        json.dump(child_max_metrics, open(save_path, 'w'))
+
+    def evaluate_deepred_normalization(self):
+        fmax_value = self.raw_metrics['Best F1 Threshold']
+        print('Fmax th value:', fmax_value)
+        th_diffs = [0.0, -0.175, -0.15, -0.125, 
+                    -0.1, -0.075, -0.05, -0.025, 
+                    0.025, 0.05, 0.075, 0.1, 0.125, 0.15]
+        alternative_thresholds = [fmax_value+x for x in th_diffs]
+        alternative_thresholds = [x for x in alternative_thresholds if x > 0 and x < 1]
+        raw_df = pl.read_parquet(self.raw_scores_path)
+        results = {}
+        results['raw_fmax_th'] = eval_predictions_dataset_bool(
+            raw_df['scores'].to_numpy() > fmax_value,
+            raw_df['labels'].to_numpy() > 0
+        )
+        self.raw_metrics['boolean'] = results['raw_fmax_th']
+        print('Raw Fmax Threshold:', json.dumps(results['raw_fmax_th'], indent=2))
+        alternative_thresholds = [self.go_id_thresholds] + alternative_thresholds
+        for threshold in alternative_thresholds:
+            deepred_metrics = calc_deepred_scores(raw_df, self.go_id_sequence, 
+                                                  self.paths_to_root, 
+                                                  threshold=threshold)
+            th_id = 'DeePred Norm ' + ('Min '+str(round(threshold, 3)) if isinstance(threshold, float) else 'By GO ID')
+            results[th_id] = deepred_metrics
+        return results
 
     def make_metrics_df(self):
-        metrics_list = ["ROC AUC", "ROC AUC", "AUPRC", "AUPRC W", "Fmax", "Best F1 Threshold"]
-        metrics_dicts = [('Raw Scores', self.raw_metrics), ('Child Max Norm.', self.child_max_metrics)]
+        curve_metrics = ["ROC AUC", "ROC AUC W", "AUPRC", "AUPRC W", "Fmax", "Best F1 Threshold"]
+        bool_metrics = ["F1 W", "Precision W", "Recall W", 
+                        "Fmax", "ROC AUC", "ROC AUC W", "AUPRC", "AUPRC W"]
+        
+        self.raw_metrics['boolean'] = self.deepred_metrics['raw_fmax_th']
+
+        metrics_dicts = [('Raw Scores', self.raw_metrics), 
+                         ('Raw Scores Best by Label', self.raw_metrics_best_by_label),
+                         ('Child Max Norm.', self.child_max_metrics), 
+                         ('Parents Min Norm.', self.parents_min_metrics)]
+        for name, d in self.deepred_metrics.items():
+            metrics_dicts.append((name, d))
+        
         lines = []
         for name, d in metrics_dicts:
+            print('Metrics for', name)
+            print(d)
             line = {'Name': 'MF Swarm '+name}
-            for metric in metrics_list:
-                line[metric] = d[metric]
-            lines.append(line)
+            if 'F1 W' in d and 'boolean' not in d:
+                #boolean metrics only
+                main_metrics_dict = self.raw_metrics
+                for metric in curve_metrics:
+                    line['Curve '+metric] = main_metrics_dict[metric]
+                for metric in bool_metrics:
+                    line['Discrete '+metric] = d[metric]
+            else:
+                #complete metrics set
+                for metric in curve_metrics:
+                    line['Curve '+metric] = d[metric]
+                
+                for metric in bool_metrics:
+                    if 'boolean' in d:
+                        line['Discrete '+metric] = d['boolean'][metric]
+                    else:
+                        line['Discrete '+metric] = None
+            line_round = {}
+            for k, v in line.items():
+                if isinstance(v, float):
+                    line_round[k] = round(v*100, 2)
+                else:
+                    line_round[k] = v
+            lines.append(line_round)
         df = pl.DataFrame(lines)
         print(df)
         return df
