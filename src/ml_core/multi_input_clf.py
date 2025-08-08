@@ -147,6 +147,7 @@ class MultiInputNet(nn.Module):
         scheduler = LambdaLR(optimizer, lr_lambda=lambda e: 0.5**(e // lr_decay_every))
 
         best_metric_val = float('inf')
+        best_auprc_val = 0.0
         epochs_no_improve = 0
 
         for epoch in range(1, n_epochs+1):
@@ -199,11 +200,15 @@ class MultiInputNet(nn.Module):
             })
             #print('Save')
             # Early stopping
+            if auprc_rounded > best_auprc_val:
+                best_auprc_val = auprc_rounded
+                print('AUPRC improvement!')
+                #torch.save(self.state_dict(), "best_model.pth")
+
             if val_loss < best_metric_val:
                 best_metric_val = val_loss
                 print('Loss improvement!')
                 epochs_no_improve = 0
-                #torch.save(self.state_dict(), "best_model.pth")
             else:
                 epochs_no_improve += 1
                 if epochs_no_improve >= patience:

@@ -1,0 +1,7 @@
+Name,Test,Number of Molecular Functions,Raw Curve Metrics,,Baseline-Normalized Curve Metrics,,,Fmax,
+,,,Raw ROC AUC,Raw AUPRC,ROC AUC,AUPRC,AUPRC W,Fmax Value,Best F1 Threshold
+MF Swarm (Raw Scores),MF Swarm Validation Set,1320,"0,9800","0,8000","0,97","0,81","0,85","0,85","0,50"
+DeepGO SE,MF Swarm Validation Set,6773,"0,9550","0,6188","0,92","0,52","0,56","0,64","0,34"
+DeepGO SE (article),DeepGO SE Orig. Art. (Uniprot),6773,"0,8740","0,5520",,,,"0,55",
+AnnoPRO,MF Swarm Validation Set,939,"0,9319","0,4756","0,86","0,31","0,39","0,49","0,28"
+AnnoPro (article),AnnoPro Orig. Art. (CAFA4),939,,"0,7550",,,,"0,7630",

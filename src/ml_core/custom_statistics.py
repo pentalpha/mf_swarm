@@ -316,6 +316,7 @@ def calc_deepred_scores(raw_df: pl.DataFrame, go_id_sequence: list,
         print('Calculating DeepPred scores for threshold:', threshold)
     else:
         print('Calculating DeepPred scores for GO ID specific thresholds:')
+    print('min_prop:', min_prop )
     norm_lines = []
     for i in tqdm(range(bool_preds_matrix.shape[0])):
         has_go_id = bool_preds_matrix[i]

@@ -114,17 +114,20 @@ Bootstrap Aggregating (Bagging): Combine CV with resampling to further reduce va
 '''
 class BasicEnsemble():
     def __init__(self, model_list, stats_dicts) -> None:
-        self.models = model_list
-        self.stats_dicts = stats_dicts
+        models_and_fmax = [(m, s) for m, s in zip(model_list, stats_dicts)]
+        models_and_fmax.sort(key=lambda x: x[1]['Fmax'])
+
+        self.models = [m for m, s in models_and_fmax]
+        self.stats_dicts = [s for m, s in models_and_fmax]
         self.stats = {}
-        for k in stats_dicts[0].keys():
-            self.stats[k] = round(np.mean([d[k] for d in stats_dicts]), 5)
-    
-    def predict(self, x, verbose=0):
+        for k in self.stats_dicts[0].keys():
+            self.stats[k] = round(np.mean([d[k] for d in self.stats_dicts]), 5)
+
+    def predict(self, x, verbose=0, weights=[1, 2, 2, 2, 3]):
         results = [m.predict(x) for m in self.models]
-        results_mean = np.mean(results, axis=0)
-        return results_mean
-    
+        results_weighted = np.average(results, axis=0)
+        return results_weighted
+
     def save(self, output_dir):
         if not path.exists(output_dir):
             mkdir(output_dir)

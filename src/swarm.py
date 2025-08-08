@@ -43,15 +43,15 @@ class Node():
     def unload_model(self):
         del self.basic_ensemble
 
-    def predict_scores(self, feature_lists, autounload=True):
+    def predict_scores(self, feature_lists, autounload=True, weights=[1, 2, 2, 2, 3]):
         #if self.basic_ensemble is None:
         self.load_model()
         base_model_results = [m.predict(feature_lists) 
             for m in self.basic_ensemble.models]
-        results_mean = np.mean(base_model_results, axis=0)
+        results_weighted = np.average(base_model_results, axis=0)
         if autounload:
             self.unload_model()
-        score_lists = base_model_results + [results_mean]
+        score_lists = base_model_results + [results_weighted]
         score_names = [f'fold{f}_base' for f in range(len(base_model_results))] + ['mean']
         schema = {}
         for name, l in zip(score_names, score_lists):
@@ -249,6 +249,12 @@ class Swarm:
             json.dump(self.deepred_metrics, open(self.deepred_norm_metrics_path, 'w'), indent=2)
         self.deepred_metrics = json.load(open(self.deepred_norm_metrics_path, 'r'))
 
+        self.deepred_norm2_metrics_path = self.swarm_dir + '/validation_results-deepred2.txt'
+        if not path.exists(self.deepred_norm2_metrics_path):
+            self.deepred_metrics2 = self.evaluate_deepred_normalization2()
+            json.dump(self.deepred_metrics2, open(self.deepred_norm2_metrics_path, 'w'), indent=2)
+        self.deepred_metrics2 = json.load(open(self.deepred_norm2_metrics_path, 'r'))
+
         self.metrics_df = self.make_metrics_df()
         self.metrics_df = self.metrics_df.sort(by=['Curve Fmax', 'Discrete F1 W', 'Discrete Precision W'])
         self.metrics_df.write_csv(self.swarm_dir + '/metrics.csv')
@@ -337,6 +343,26 @@ class Swarm:
             th_id = 'DeePred Norm ' + ('Min '+str(round(threshold, 3)) if isinstance(threshold, float) else 'By GO ID')
             results[th_id] = deepred_metrics
         return results
+    
+    def evaluate_deepred_normalization2(self):
+        raw_df = pl.read_parquet(self.raw_scores_path)
+        results = {}
+
+        positive_proportions = [
+            0.25, 0.275,
+            0.3, 0.325, 0.35, 0.375, 
+            0.4, 0.425, 0.45, 0.475, 
+            0.525, 0.55, 0.575,
+            0.6, 0.625, 0.65, 0.675,
+            0.7, 0.75]
+        for x in positive_proportions:
+            deepred_metrics = calc_deepred_scores(raw_df, self.go_id_sequence, 
+                self.paths_to_root, 
+                threshold=self.go_id_thresholds,
+                min_prop= x)
+            th_id = 'DeePred Norm Min Prop ' + str(round(x, 3))
+            results[th_id] = deepred_metrics
+        return results
 
     def make_metrics_df(self):
         curve_metrics = ["ROC AUC", "ROC AUC W", "AUPRC", "AUPRC W", "Fmax", "Best F1 Threshold"]
@@ -350,6 +376,8 @@ class Swarm:
                          ('Child Max Norm.', self.child_max_metrics), 
                          ('Parents Min Norm.', self.parents_min_metrics)]
         for name, d in self.deepred_metrics.items():
+            metrics_dicts.append((name, d))
+        for name, d in self.deepred_metrics2.items():
             metrics_dicts.append((name, d))
         
         lines = []
