@@ -35,6 +35,7 @@ def training_process(params_json_path, results_json_path):
     results, validation_solved_df = validate_cv_model_noretrain(
         model_obj, val_path, go_labels, features, basilines)
     
+    print(local_dir)
     validation_solved_df.write_parquet(local_dir+'/standard_validation.parquet')
     json.dump(results, open(results_json_path, 'w'), indent=4)
     model_obj.save(local_dir+'/standard_model')

@@ -10,7 +10,7 @@ import os
 
 from stats_custom import calc_metrics_at_freq_threshold
 
-def calc_metrics_for_tool(df_path, experimental_annots, max_n=16000):
+def calc_metrics_for_tool(df_path, experimental_annots, max_n=17000):
     print(df_path)
     print('Loading')
     labels_path = df_path.replace('-preds.parquet', '-label_names.txt')
@@ -38,7 +38,7 @@ def calc_metrics_for_tool(df_path, experimental_annots, max_n=16000):
     print(true_labels.shape)
     #quit(1)
     #freq_thresholds = [9, 7, 5, 3, 1, 0]
-    freq_thresholds = [5, 3, 0]
+    freq_thresholds = [3, 0]
     #freq_thresholds = [6]
     for min_freq in freq_thresholds:
         print('min freq:', min_freq)
@@ -47,11 +47,47 @@ def calc_metrics_for_tool(df_path, experimental_annots, max_n=16000):
     
     for min_freq in freq_thresholds:
         new_m = calc_metrics_at_freq_threshold(col_sums, true_labels, val_y_pred, 
-            min_freq, labels_sequence, labels_path)
+            min_freq, labels_sequence)
         metrics_dict[f'Min_Freq_{min_freq+1}'] = new_m
         print(json.dumps(new_m, indent=2))
     print(metrics_dict)
     return metrics_dict
+
+def make_metrics_df(metrics_all):
+    curve_metrics = ["ROC AUC", "ROC AUC W", "AUPRC", "AUPRC W", "Fmax", "Best F1 Threshold"]
+    bool_metrics = ["F1 W", "Precision W", "Recall W", 
+                    "Fmax", "ROC AUC", "ROC AUC W", "AUPRC", "AUPRC W"]
+    metrics_dicts = []
+    for p, by_th in metrics_all.items():
+        for th, metric_vals in by_th.items():
+            name = os.path.basename(p) + ' - Min Freq ' + str(th)
+            metrics_dicts.append((name, metric_vals))
+    
+    lines = []
+    for name, d in metrics_dicts:
+        print('Metrics for', name)
+        print(d)
+        line = {'Name': name}
+        
+        #complete metrics set
+        for metric in curve_metrics:
+            line['Curve '+metric] = d[metric]
+        
+        for metric in bool_metrics:
+            if 'boolean' in d:
+                line['Discrete '+metric] = d['boolean'][metric]
+            else:
+                line['Discrete '+metric] = None
+        line_round = {}
+        for k, v in line.items():
+            if isinstance(v, float):
+                line_round[k] = round(v*100, 2)
+            else:
+                line_round[k] = v
+        lines.append(line_round)
+    df = pl.DataFrame(lines)
+    print(df)
+    return df
 
 #sys.argv = ['others/validate_others.py', '~/data/protein_dimension_db/release_1/', 
 #    '40', '0.15', '~/data/mf_swarm_datasets/other_tools/']
@@ -82,14 +118,18 @@ else:
 
     json.dump(experimental_annots, open(annots_cache, 'w'), indent=4)
 
-print('Analyzing tools')
-df_paths = glob(others_dir+'/*-preds.parquet')
-metrics_all = {}
-for df_path in tqdm(df_paths):
-    metrics_all[df_path] = calc_metrics_for_tool(df_path, experimental_annots)
-json.dump(metrics_all, open(f'{others_dir}/validation_results.json', 'w'), indent=4)
+validation_results_path = f'{others_dir}/validation_results.json'
+if not os.path.exists(validation_results_path):
+    print('Analyzing tools')
+    df_paths = glob(others_dir+'/*-preds.parquet')
+    metrics_all = {}
+    for df_path in tqdm(df_paths):
+        metrics_all[df_path] = calc_metrics_for_tool(df_path, experimental_annots)
+    json.dump(metrics_all, open(validation_results_path, 'w'), indent=4)
+else:
+    metrics_all = json.load(open(validation_results_path, 'r'))
 
-df_lines = []
+'''df_lines = []
 col = ['Fmax','AUPRC W','ROC AUC W','Tool Labels','Evaluated Labels','Best F1 Threshold','ROC AUC','AUPRC','N Proteins','bases']
 for p, by_th in metrics_all.items():
     for th, metric_vals in by_th.items():
@@ -97,5 +137,7 @@ for p, by_th in metrics_all.items():
         df_lines.append(new_line)
 
 df_final = pd.DataFrame(df_lines)
-df_final.columns = ['Software', 'Min. GO ID Freq.'] + col
-df_final.to_csv(f'{others_dir}/validation_results.csv', sep='\t')
+df_final.columns = ['Software', 'Min. GO ID Freq.'] + col'''
+df_final = make_metrics_df(metrics_all)
+print('Saving results')
+df_final.write_csv(f'{others_dir}/validation_results.csv', separator='\t')

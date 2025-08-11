@@ -1,9 +1,13 @@
-import numpy as np
+import json
+from os import path
 from glob import glob
-from tqdm import tqdm
 
+from tqdm import tqdm
+import numpy as np
 from sklearn import metrics
 from sklearn.metrics import precision_score, recall_score
+import matplotlib.pyplot as plt
+import polars as pl
 
 #SKLearn implementation of the Fmax metric
 def fast_fmax(pred_scores, truth_set, thresholds=None):
@@ -70,39 +74,177 @@ def norm_with_baseline(metric_val, metric_baseline, max_value = 1.0):
     metric_norm = (metric_val - actual_zero) / actual_range
     return metric_norm
 
-def calc_metrics_at_freq_threshold(col_sums, true_labels, val_y_pred, 
-        min_freq, labels_sequence, labels_path):
-    print('min freq:', min_freq)
-    valid_cols = col_sums > min_freq
-    valid2 = col_sums < true_labels.shape[0]
-    valid_cols = np.array([a and b for a,b in zip(valid_cols, valid2)])
-    print('true_labels')
-    #print(true_labels)
-    print(true_labels.shape)
-    print('val_y_pred')
-    #print(val_y_pred)
-    print(val_y_pred.shape)
-    print('valid_cols')
-    #print(valid_cols)
-    print(valid_cols.shape)
-    print('col_sums')
-    #print(col_sums)
-    print(col_sums.shape)
-    true_labels_f = true_labels[:, valid_cols]
-    val_y_pred_f = val_y_pred[:, valid_cols]
+def create_random_baseline(val_y_pred) -> np.ndarray:
+    return np.random.rand(*val_y_pred.shape)
+
+def load_swarm_params_and_results_jsons(full_swarm_exp_dir):
+    node_dirs = glob(full_swarm_exp_dir + '/Level-*')
+    node_dicts = [x+'/exp_params.json' for x in node_dirs]
+    node_results = [x+'/exp_results.json' for x in node_dirs]
+
+    params_jsons = []
+    results_jsons = []
+    for exp_params, exp_results in zip(node_dicts, node_results):
+        if not path.exists(exp_params):
+            params_jsons.append(exp_params.replace('exp_params.json', 'standard_params.json'))
+        else:
+            params_jsons.append(exp_params)
+        std_results = exp_results.replace('exp_results.json', 'standard_results.json')
+        if path.exists(exp_results):
+            results_jsons.append(exp_results)
+        elif path.exists(std_results):
+            results_jsons.append(std_results)
+        else:
+            results_jsons.append(None)
+
+    return params_jsons, results_jsons
+
+def draw_cv_relevance(full_swarm_exp_dir: str, output_dir: str):
+    params_jsons, results_jsons = load_swarm_params_and_results_jsons(full_swarm_exp_dir)
+    
+    #n_proteins = []
+    #node_names = []
+    auprc_difs = []
+    roc_auc_difs = []
+    for exp_params, exp_results in zip(params_jsons, results_jsons):
+        params = json.load(open(exp_params, 'r'))
+        if exp_results is not None:
+            results = json.load(open(exp_results, 'r'))
+            auprc_w = results['validation']['AUPRC W']*100
+            roc_auc_w = results['validation']['ROC AUC W']*100
+
+            base_auprc_ws = [x['AUPRC W']*100 for x in results['base_model_validations']]
+            base_roc_auc_ws = [x['ROC AUC W']*100 for x in results['base_model_validations']]
+
+            difs = [auprc_w - x for x in base_auprc_ws]
+            difs2 = [roc_auc_w - x for x in base_roc_auc_ws]
+
+            auprc_difs.extend(difs)
+            roc_auc_difs.extend(difs2)
+            #auprc_difs.append(auprc_w - max(base_auprc_ws))
+            #roc_auc_difs.append(roc_auc_w - max(base_roc_auc_ws))
+    print(auprc_difs)
+    print(roc_auc_difs)
+    #Create box plot of AUPRC diferences and ROC AUC differences using matplotlib
+    plt.figure(figsize=(5, 8))
+    plt.boxplot([auprc_difs, roc_auc_difs], labels=['AUPRC Gains', 'ROC AUC Gains'])
+    plt.title('Classification Performance Gains from Cross-Validation')
+    plt.ylabel('Difference (%)')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(path.join(output_dir, 'cv_relevance_boxplot.png'))
+    plt.close()
+
+def find_best_threshold_per_col(scores_matrix: np.ndarray, 
+        labels_matrix: np.ndarray, col_ids: list) -> dict:
+    # scores_matrix: (n_samples, n_labels)
+    # labels_matrix: (n_samples, n_labels)
+    # col_ids: list of label names
+    if scores_matrix.shape != labels_matrix.shape:
+        raise ValueError("Scores and labels matrices must have the same shape.")
+    n_samples, n_labels = scores_matrix.shape
+    if len(col_ids) != n_labels:
+        raise ValueError("Column IDs must match the number of labels in the matrices.")
+    best_thresholds = {}
+    for i in tqdm(range(n_labels)):
+        col_scores = scores_matrix[:, i]
+        col_labels = labels_matrix[:, i]
+        thresholds = np.linspace(0, 1, 150)
+        best_f1 = 0.0
+        best_th = 0.0
+        for th in thresholds:
+            pred_bin = (col_scores > th).astype(int)
+            rec = recall_score(col_labels, pred_bin, zero_division=0)
+            prec = precision_score(col_labels, pred_bin, zero_division=0)
+            if rec + prec > 0:
+                f1 = 2 * prec * rec / (prec + rec)
+            else:
+                f1 = 0.0
+            if f1 > best_f1:
+                best_f1 = f1
+                best_th = th
+        best_thresholds[col_ids[i]] = best_th
+        print(f"Best threshold for {col_ids[i]}: {best_th} (F1: {best_f1})")
+    return best_thresholds
+
+def eval_predictions_dataset_bool(preds_matrix_bool: np.ndarray, 
+    labels_matrix_bool: np.ndarray) -> dict:
+    # preds_matrix_bool: (n_samples, n_labels)
+    # labels_matrix_bool: (n_samples, n_labels)
+    n_samples, n_labels = preds_matrix_bool.shape
+    if preds_matrix_bool.shape != labels_matrix_bool.shape:
+        raise ValueError("Predictions and labels matrices must have the same shape.")
+    # True positives, false positives, false negatives para cada threshold
+    f1_macro = metrics.f1_score(labels_matrix_bool, preds_matrix_bool, average='macro')
+    f1_weighted = metrics.f1_score(labels_matrix_bool, preds_matrix_bool, average='weighted')
+    f1_samples = metrics.f1_score(labels_matrix_bool, preds_matrix_bool, average='samples')
+    precision_macro = metrics.precision_score(labels_matrix_bool, preds_matrix_bool, average='macro')
+    precision_weighted = metrics.precision_score(labels_matrix_bool, preds_matrix_bool, average='weighted')
+    precision_samples = metrics.precision_score(labels_matrix_bool, preds_matrix_bool, average='samples')
+    recall_samples = metrics.recall_score(labels_matrix_bool, preds_matrix_bool, average='samples')
+    recall_weighted = metrics.recall_score(labels_matrix_bool, preds_matrix_bool, average='weighted')
+    recall_macro = metrics.recall_score(labels_matrix_bool, preds_matrix_bool, average='macro')
+    f_max = faster_fmax(preds_matrix_bool, labels_matrix_bool)
+
+    return {
+        'Precision': precision_macro,
+        'Recall': recall_macro,
+        'F1': f1_macro,
+        'Precision W': precision_weighted,
+        'Recall W': recall_weighted,
+        'F1 W': f1_weighted,
+        'Precision S': precision_samples,
+        'Recall S': recall_samples,
+        'F1 S': f1_samples,
+        'Fmax': f_max[0],
+        'Best F1 Threshold': f_max[1],
+        'N Proteins': n_samples,
+        'ROC AUC': metrics.roc_auc_score(labels_matrix_bool, preds_matrix_bool, average='macro'),
+        'ROC AUC W': metrics.roc_auc_score(labels_matrix_bool, preds_matrix_bool, average='weighted'),
+        'AUPRC': metrics.average_precision_score(labels_matrix_bool, preds_matrix_bool, average='macro'),
+        'AUPRC W': metrics.average_precision_score(labels_matrix_bool, preds_matrix_bool, average='weighted'),
+    }
+
+def convert_using_col_thresholds(scores_matrix: np.ndarray, 
+                                 col_thresholds: dict, col_ids: list) -> np.ndarray:
+    bool_pred_lines = []
+    for protein_index in range(scores_matrix.shape[0]):
+        bool_pred_line = np.array([scores_matrix[protein_index, i] > col_thresholds[col_ids[i]] 
+                            for i in range(len(col_ids))])
+        bool_pred_lines.append(bool_pred_line)
+    val_y_pred_bool = np.asarray(bool_pred_lines)
+    return val_y_pred_bool
+
+def eval_predictions(true_labels_f, val_y_pred_f, 
+        go_id_sequence=None,
+        thresholds=None):
+    
     baseline_pred_f = np.random.rand(*val_y_pred_f.shape)
 
-    #min_max_scaler = preprocessing.MinMaxScaler()
-    #val_y_pred_f_scaled = min_max_scaler.fit_transform(val_y_pred_f)
-    labels_sequence_f = [label for i, label in enumerate(labels_sequence) if valid_cols[i]]
-
-    print(f"Removed {np.sum(~valid_cols)} columns with low frequency in true_labels.")
-
-    evaluated_label_sequence_path = labels_path.replace('.txt', f'.min_{min_freq}.evaluated.txt')
-    open(evaluated_label_sequence_path, 'w').write('\n'.join(labels_sequence_f))
-
+    print('True labels:')
+    print(true_labels_f)
+    print('Scores:')
+    print(val_y_pred_f)
+    print('Baseline:')
+    print(baseline_pred_f)
     print('Comparing')
     fmax, bestrh = faster_fmax(val_y_pred_f, true_labels_f)
+    print(fmax, bestrh)
+
+    if go_id_sequence != None and thresholds == None:
+        thresholds = find_best_threshold_per_col(val_y_pred_f, true_labels_f, 
+            go_id_sequence)
+    
+    if go_id_sequence != None and thresholds != None:
+        # If go_id_sequence and thresholds are provided, use them to filter scores
+        val_y_pred_bool = convert_using_col_thresholds(val_y_pred_f, thresholds, go_id_sequence)
+        bool_metrics = eval_predictions_dataset_bool(val_y_pred_bool, true_labels_f > 0)
+    else:
+        val_y_pred_bool = val_y_pred_f > bestrh
+        bool_metrics = eval_predictions_dataset_bool(val_y_pred_bool, true_labels_f > 0)
+    print('Boolean metrics:')
+    print(json.dumps(bool_metrics, indent=2))
+    
     roc_auc_score_mac = metrics.roc_auc_score(true_labels_f, val_y_pred_f, average='macro')
     roc_auc_score_mac_base = metrics.roc_auc_score(true_labels_f, baseline_pred_f, average='macro')
     roc_auc_score_mac_norm = norm_with_baseline(roc_auc_score_mac, roc_auc_score_mac_base)
@@ -126,6 +268,7 @@ def calc_metrics_at_freq_threshold(col_sums, true_labels, val_y_pred,
             'AUPRC': float(auprc_mac),
             'AUPRC W': float(auprc_w)
         },
+        'boolean': bool_metrics,
         'ROC AUC': float(roc_auc_score_mac_norm),
         'ROC AUC W': float(roc_auc_score_w_norm),
         'AUPRC': float(auprc_mac_norm),
@@ -138,9 +281,49 @@ def calc_metrics_at_freq_threshold(col_sums, true_labels, val_y_pred,
             'AUPRC': float(auprc_mac_base),
             'AUPRC W': float(auprc_w_base),
         },
-        'N Proteins': len(true_labels_f),
-        'Tool Labels': len(valid_cols),
-        'Evaluated Labels': len(labels_sequence_f)
+        'N Proteins': true_labels_f.shape[0]
     }
-    
+
     return new_m
+
+def eval_predictions_dataset(df: pl.DataFrame, truth_col = 'labels', scores_col='scores', 
+        go_id_sequence=None,
+        thresholds=None) -> dict:
+    true_labels_f = df[truth_col].to_numpy()
+    val_y_pred_f = df[scores_col].to_numpy()
+
+    return eval_predictions( 
+        true_labels_f, val_y_pred_f, 
+        go_id_sequence=go_id_sequence,
+        thresholds=thresholds)
+    
+
+def calc_metrics_at_freq_threshold(col_sums, true_labels, val_y_pred, 
+        min_freq, labels_sequence):
+    print('min freq:', min_freq)
+    valid_cols = col_sums > min_freq
+    valid2 = col_sums < true_labels.shape[0]
+    valid_cols = np.array([a and b for a,b in zip(valid_cols, valid2)])
+    print('true_labels')
+    #print(true_labels)
+    print(true_labels.shape)
+    print('val_y_pred')
+    #print(val_y_pred)
+    print(val_y_pred.shape)
+    print('valid_cols')
+    #print(valid_cols)
+    print(valid_cols.shape)
+    print('col_sums')
+    #print(col_sums)
+    print(col_sums.shape)
+    labels_sequence2 = [labels_sequence[i] for i in range(len(labels_sequence)) if valid_cols[i]]
+    true_labels_f = true_labels[:, valid_cols]
+    val_y_pred_f = val_y_pred[:, valid_cols]
+
+    m = eval_predictions( 
+        true_labels_f, val_y_pred_f, 
+        go_id_sequence=labels_sequence2,
+        thresholds=None)
+    m['Tool Labels'] = len(labels_sequence)
+    m['Evaluated Labels'] = len(labels_sequence2)
+    return m
