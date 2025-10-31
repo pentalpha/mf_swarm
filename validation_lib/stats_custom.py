@@ -229,7 +229,7 @@ def eval_predictions(true_labels_f, val_y_pred_f,
     print(baseline_pred_f)
     print('Comparing')
     fmax, bestrh = faster_fmax(val_y_pred_f, true_labels_f)
-    print(fmax, bestrh)
+    print('fmax', fmax, 'bestrh', bestrh)
 
     if go_id_sequence != None and thresholds == None:
         thresholds = find_best_threshold_per_col(val_y_pred_f, true_labels_f, 
@@ -248,19 +248,19 @@ def eval_predictions(true_labels_f, val_y_pred_f,
     roc_auc_score_mac = metrics.roc_auc_score(true_labels_f, val_y_pred_f, average='macro')
     roc_auc_score_mac_base = metrics.roc_auc_score(true_labels_f, baseline_pred_f, average='macro')
     roc_auc_score_mac_norm = norm_with_baseline(roc_auc_score_mac, roc_auc_score_mac_base)
-    print(roc_auc_score_mac, roc_auc_score_mac_norm)
+    print('roc_auc_score_mac', roc_auc_score_mac, roc_auc_score_mac_norm)
     roc_auc_score_w = metrics.roc_auc_score(true_labels_f, val_y_pred_f, average='weighted')
     roc_auc_score_w_base = metrics.roc_auc_score(true_labels_f, baseline_pred_f, average='weighted')
     roc_auc_score_w_norm = norm_with_baseline(roc_auc_score_w, roc_auc_score_w_base)
-    print(roc_auc_score_w, roc_auc_score_w_norm)
+    print('roc_auc_score_w', roc_auc_score_w, roc_auc_score_w_norm)
     auprc_mac = metrics.average_precision_score(true_labels_f, val_y_pred_f)
     auprc_mac_base = metrics.average_precision_score(true_labels_f, baseline_pred_f)
     auprc_mac_norm = norm_with_baseline(auprc_mac, auprc_mac_base)
-    print(auprc_mac, auprc_mac_norm)
+    print('auprc_mac', auprc_mac, auprc_mac_norm)
     auprc_w = metrics.average_precision_score(true_labels_f, val_y_pred_f, average='weighted')
     auprc_w_base = metrics.average_precision_score(true_labels_f, baseline_pred_f, average='weighted')
     auprc_w_norm = norm_with_baseline(auprc_w, auprc_w_base)
-    print(auprc_w, auprc_w_norm)
+    print('auprc_w', auprc_w, auprc_w_norm)
     new_m = {
         'raw':{
             'ROC AUC': float(roc_auc_score_mac),

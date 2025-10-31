@@ -38,7 +38,7 @@ def calc_metrics_for_tool(df_path, experimental_annots, max_n=17000):
     print(true_labels.shape)
     #quit(1)
     #freq_thresholds = [9, 7, 5, 3, 1, 0]
-    freq_thresholds = [3, 0]
+    freq_thresholds = [3]
     #freq_thresholds = [6]
     for min_freq in freq_thresholds:
         print('min freq:', min_freq)

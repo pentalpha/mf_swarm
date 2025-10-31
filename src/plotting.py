@@ -315,6 +315,7 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
         n_labels[node_names[-1]] = len(params['node']['go'])
 
         std_results = exp_results.replace('exp_results.json', 'standard_results.json')
+
         if path.exists(exp_results):
             results = json.load(open(exp_results, 'r'))
             auprc_ws.append(results['validation']['AUPRC W'])
@@ -353,19 +354,21 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
     levels_width = max(node_pos_in_level)
     auprc_min = min([x for x in auprc_ws if x is not None])
     auprc_min = round(auprc_min, 2)-0.05
+    auprc_max = max([x for x in auprc_ws if x is not None])
     proteins_min = min(n_proteins)
     proteins_max = max(n_proteins)
     labels_min = min([x for x in n_labels.values()])
     labels_max = max([x for x in n_labels.values()])
     fmax_max = max(test_fmax + val_fmax)
-    m1 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=auprc_min, vmax=1.0), 
+    fmax_min = min(test_fmax + val_fmax)
+    m1 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=auprc_min, vmax=auprc_max), 
         cmap=cm.seismic_r)
     m2 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=proteins_min, vmax=proteins_max), 
         cmap=cm.seismic)
     m3 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=labels_min, vmax=labels_max), 
         cmap=cm.seismic)
-    m4 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=0.0, vmax=fmax_max), 
-        cmap=cm.seismic)
+    m4 = cm.ScalarMappable(norm=mpl.colors.Normalize(vmin=fmax_min, vmax=fmax_max), 
+        cmap=cm.seismic_r)
     plot_w = 5.5
     plot_h = 11
     fig1, ax1 = plt.subplots(1,1, figsize=(plot_w,plot_h))
@@ -420,11 +423,11 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
     
     #ax.get_xaxis().set_visible(False)
     #ax.set_xscale('log', base=30)
-    min_maxes = [(auprc_min, 1.0), 
+    min_maxes = [(auprc_min, auprc_max), 
         (proteins_min, proteins_max), 
         (labels_min, labels_max),
-        (0.0, fmax_max),
-        (0.0, fmax_max)]
+        (fmax_min, fmax_max),
+        (fmax_min, fmax_max)]
     for fig, ax, label, m, min_max in zip(figs, axes, metrics_labels, color_maps, min_maxes):
         ax.set_ylabel("Gene Ontology Level", fontsize=14)
         #ax.set_xlabel("Models in Layer", fontsize=18)
@@ -457,6 +460,7 @@ def draw_swarm_panel(full_swarm_exp_dir: str, output_dir: str):
 
 if __name__ == '__main__':
     full_swarm_exp_dir = sys.argv[1]
-    draw_swarm_panel(full_swarm_exp_dir, 'img/')
+    plots_dir = full_swarm_exp_dir+'/plots'
+    draw_swarm_panel(full_swarm_exp_dir, plots_dir)
     
     
