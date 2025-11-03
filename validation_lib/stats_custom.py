@@ -148,23 +148,30 @@ def find_best_threshold_per_col(scores_matrix: np.ndarray,
     best_thresholds = {}
     for i in tqdm(range(n_labels)):
         col_scores = scores_matrix[:, i]
-        col_labels = labels_matrix[:, i]
-        thresholds = np.linspace(0, 1, 150)
-        best_f1 = 0.0
-        best_th = 0.0
-        for th in thresholds:
-            pred_bin = (col_scores > th).astype(int)
-            rec = recall_score(col_labels, pred_bin, zero_division=0)
-            prec = precision_score(col_labels, pred_bin, zero_division=0)
-            if rec + prec > 0:
-                f1 = 2 * prec * rec / (prec + rec)
-            else:
-                f1 = 0.0
-            if f1 > best_f1:
-                best_f1 = f1
-                best_th = th
-        best_thresholds[col_ids[i]] = best_th
-        print(f"Best threshold for {col_ids[i]}: {best_th} (F1: {best_f1})")
+        if any([x not in [0.0, 1.0] for x in col_scores]):
+            # If there are non-binary scores, we can find a threshold
+            col_labels = labels_matrix[:, i]
+            thresholds = np.linspace(0, 1, 150)
+            best_f1 = 0.0
+            best_th = 0.0
+            for th in thresholds:
+                pred_bin = (col_scores > th).astype(int)
+                rec = recall_score(col_labels, pred_bin, zero_division=0)
+                prec = precision_score(col_labels, pred_bin, zero_division=0)
+                if rec + prec > 0:
+                    f1 = 2 * prec * rec / (prec + rec)
+                else:
+                    f1 = 0.0
+                if f1 > best_f1:
+                    best_f1 = f1
+                    best_th = th
+            best_thresholds[col_ids[i]] = best_th
+            print(f"Best threshold for {col_ids[i]}: {best_th} (F1: {best_f1})")
+        else:
+            # If all scores are binary, set threshold to 0.5
+            best_thresholds[col_ids[i]] = 0.5
+            print(f"All scores for {col_ids[i]} are binary. Setting threshold to 0.5")
+        
     return best_thresholds
 
 def eval_predictions_dataset_bool(preds_matrix_bool: np.ndarray, 
