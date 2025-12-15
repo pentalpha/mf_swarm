@@ -6,6 +6,7 @@ from multiprocessing import Pool
 from os import path
 import os
 import sys
+
 import numpy as np
 from pickle import load, dump
 import polars as pl
@@ -14,13 +15,13 @@ print("New thread", file=sys.stderr)
 os.environ["KERAS_BACKEND"] = "tensorflow"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-# from metaheuristics import ProblemTranslator, GeneticAlgorithm, RandomSearchMetaheuristic
-from create_dataset import Dataset, find_latest_dataset
-from dimension_db import DimensionDB
-from cross_validation import split_train_test_n_folds, BasicEnsemble
-from node_factory import makeMultiClassifierModel
-# from node_factory import create_params_for_features, sample_train_test
-from util_base import run_command
+# from mf_swarm_lib.core.metaheuristics import ProblemTranslator, GeneticAlgorithm, RandomSearchMetaheuristic
+from mf_swarm_lib.data.dataset import Dataset, find_latest_dataset
+from mf_swarm_lib.data.dimension_db import DimensionDB
+from mf_swarm_lib.training.cross_validation import split_train_test_n_folds, BasicEnsemble
+from mf_swarm_lib.core.node_factory import makeMultiClassifierModel
+# from mf_swarm_lib.core.node_factory import create_params_for_features, sample_train_test
+from mf_swarm_lib.utils.util_base import run_command
 # from base_benchmark import BaseBenchmarkRunner, run_validation
 
 top_feature_list = ["taxa_256", "ankh_base", "esm2_t33"]
@@ -240,21 +241,4 @@ def test_nodes_from_full_clustering(datasets_dir, min_proteins_per_mf,
 
     return dataset, node, annot_model, params_dict
 
-if __name__ == "__main__":
-    dimension_db_release_n = "1"
-    dimension_db_releases_dir = path.expanduser("~/data/protein_dimension_db/")
-    datasets_dir = path.expanduser("~/data/mf_swarm_datasets/")
-    benchmark_dir = "tmp"
-    local_dir = benchmark_dir + "/cv_validation"
-
-    run_command(["mkdir -p", local_dir])
-
-    min_proteins_per_mf = 40
-    val_perc = 0.15
-    #test_benchmarking_node(datasets_dir, min_proteins_per_mf, dimension_db_release_n,
-    #    val_perc, dimension_db_releases_dir, )
-
-    dataset, node, annot_model, params_dict = test_nodes_from_full_clustering(
-        datasets_dir, min_proteins_per_mf, 
-        dimension_db_release_n, val_perc, dimension_db_releases_dir)
     

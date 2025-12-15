@@ -1,4 +1,8 @@
+import sys
+import os
 
+# Add the directory containing mf_swarm_lib to the python path (src/)
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 import json
 import sys
@@ -7,8 +11,10 @@ from decimal import Decimal
 import pandas as pd
 from matplotlib.patches import ConnectionPatch, Rectangle
 import matplotlib.patheffects as pe
-from parsing import load_final_metrics, load_final_solutions
-from plotting import model_colors
+from mf_swarm_lib.utils.parsing import load_final_metrics, load_final_solutions
+from mf_swarm_lib.utils.plotting import model_colors
+        from adjustText import adjust_text
+from mf_swarm_lib.benchmarks.summarize_pairs_benchmark import *
 
 if __name__ == '__main__':
     #benchmark_path = '/home/pita/experiments/base_benchmark_4'
@@ -23,10 +29,10 @@ if __name__ == '__main__':
     pairs_results = load_final_metrics(pairs_benchmark_dir)
     more_results = [load_final_metrics(p) for p in others]
 
-    metrics_to_use = ['f1_score_w_05', 'ROC AUC', 'ROC AUC W', 
+    metrics_to_use = ['f1_score_w_05', 'ROC AUC', 'ROC AUC W',
                       'precision_score_w_06', 'recall_score', 'Accuracy',
                       'quickness', 'fitness', 'AUPRC', 'AUPRC W']
-    metric_pretty_names = ['F1 Score (W)', 'ROC AUC Score', 'ROC AUC Score (W)', 
+    metric_pretty_names = ['F1 Score (W)', 'ROC AUC Score', 'ROC AUC Score (W)',
                            'Precision Score (W)', 'Recall Score', 'Binary Accuracy',
                            'Quickness', 'Fitness', 'AUPRC Score', 'AUPRC Score (W)']
 
@@ -34,9 +40,9 @@ if __name__ == '__main__':
         new_perf = {'model': name}
         for m, m2 in zip(metrics_to_use, metric_pretty_names):
             new_perf[m2] = round(v['metrics'][m], 4)
-            
+
         performances.append(new_perf)'''
-    
+
     determinant_metric = 'AUPRC Score (W)'
     performances_dict = {}
 
@@ -60,13 +66,13 @@ if __name__ == '__main__':
 
     #metric_weights = [('ROC AUC Score (W)', 4), ('AUPRC Score', 4), ('AUPRC Score (W)', 2)]
     #w_total = sum([w for m, w in metric_weights])
-    
+
     performances.sort(
-        key=lambda p: (p['AUPRC Score (W)'], p['ROC AUC Score (W)'], p['AUPRC Score']), 
+        key=lambda p: (p['AUPRC Score (W)'], p['ROC AUC Score (W)'], p['AUPRC Score']),
         reverse=True)
-    columns = ['model', 
-        'ROC AUC Score', 'AUPRC Score', 
-        'AUPRC Score (W)', 'ROC AUC Score (W)', 
+    columns = ['model',
+        'ROC AUC Score', 'AUPRC Score',
+        'AUPRC Score (W)', 'ROC AUC Score (W)',
         'Quickness',
         'F1 Score (W)', 'Precision Score (W)', 'Recall Score', 'Binary Accuracy',
         'Fitness', 'Metaparameters']
@@ -74,7 +80,7 @@ if __name__ == '__main__':
     performances_df = performances_df[columns]
     performances_df.to_csv(pairs_benchmark_dir + '/benchmark.tsv', sep='\t', index=False)
 
-    metric_pairs = [('AUPRC Score (W)', 'ROC AUC Score (W)'), 
+    metric_pairs = [('AUPRC Score (W)', 'ROC AUC Score (W)'),
                     ('AUPRC Score', 'ROC AUC Score')]
 
     for metric_a, metric_b in metric_pairs:
@@ -88,7 +94,7 @@ if __name__ == '__main__':
         for _, row in performances_df.iterrows():
             name = row['model']
             a.append(row[metric_a])
-            
+
             b.append(row[metric_b])
             colors_big.append(model_colors['ankh_base'])
             '''if '-' in name:
@@ -102,8 +108,8 @@ if __name__ == '__main__':
         ax_main.scatter(a, b, s=170, c=colors_big)
         #ax_main.scatter(a_small, b_small, s=70, c=colors_small)
         for i, txt in enumerate(names):
-            ax_main.annotate(txt.upper().replace('_', ' ').replace('-', '+'), 
-                        (a[i], b[i]), 
+            ax_main.annotate(txt.upper().replace('_', ' ').replace('-', '+'),
+                        (a[i], b[i]),
                         ha='center', va='bottom', fontsize=8, alpha=0.9)
         ax_main.set_xlabel(metric_a)
         ax_main.set_ylabel(metric_b)
@@ -127,7 +133,7 @@ if __name__ == '__main__':
             if (row[metric_a] > new_x1 and row[metric_b] > new_y1):
                 name = row['model']
                 a.append(row[metric_a])
-                
+
                 b.append(row[metric_b])
                 colors_big.append(model_colors[name.split('-')[0]])
                 if '-' in name:
@@ -144,11 +150,11 @@ if __name__ == '__main__':
         texts = []
         for i, txt in enumerate(names):
             #ax_zoom.()
-            new_txt = ax_zoom.text(a[i], b[i], txt.upper().replace('_', ' ').replace('-', '+'), 
+            new_txt = ax_zoom.text(a[i], b[i], txt.upper().replace('_', ' ').replace('-', '+'),
                         ha='center', va='bottom', fontsize=11, alpha=1,
                         path_effects=[pe.withStroke(linewidth=2, foreground="white")])
             texts.append(new_txt)
-        adjust_text(texts, 
+        adjust_text(texts,
                     #only_move={'points':'y', 'texts':'y'},
                     expand=(1.2, 1),
                     only_move='y',
@@ -157,7 +163,7 @@ if __name__ == '__main__':
         #ax_zoom.set_ylabel(metric_b)
         ax_zoom.set_title('Zoom At Best Performing Models')
 
-        conn1 = ConnectionPatch((0.75, 0.75), (0.01, 0.01), 
+        conn1 = ConnectionPatch((0.75, 0.75), (0.01, 0.01),
                                 'axes fraction', coordsB='axes fraction',
                                 axesA=ax_main, axesB=ax_zoom)
         conn2 = ConnectionPatch((0.999, 0.999), (0.99, 0.99),
@@ -171,9 +177,10 @@ if __name__ == '__main__':
         ax_main.add_patch(rect)'''
 
         fig.tight_layout()
-        
+
         fig.savefig(
             pairs_benchmark_dir+'/model_performance-'+metric_a+'_'+metric_b+'.png',
             dpi=160)
 
-    
+
+

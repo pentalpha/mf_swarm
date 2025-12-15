@@ -1,12 +1,18 @@
+import sys
+import os
+
+# Add the directory containing mf_swarm_lib to the python path (src/)
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
 import json
 from os import path
 import sys
 import pandas as pd
+from mf_swarm_lib.core.metaheuristics import calc_custom_param_bounds
+from mf_swarm_lib.utils.util_base import run_command
+from mf_swarm_lib.benchmarks.prepare_pairs_benchmark import *
 
-from metaheuristics import calc_custom_param_bounds
-from util_base import run_command
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     dimension_db_releases_dir = sys.argv[1]
     #hint: 1
     dimension_db_release_n = sys.argv[2]
@@ -36,12 +42,12 @@ if __name__ == "__main__":
                 feature_pairs.add((first, second))
         if models_sorted[-1] != x:
             feature_pairs.add((x, models_sorted[-1]))
-    
+
     all_models_to_use = set(best_models + [models_sorted[-1]])
-    custom_param_bounds = calc_custom_param_bounds(path.dirname(base_benchmark_tsv_path), 
+    custom_param_bounds = calc_custom_param_bounds(path.dirname(base_benchmark_tsv_path),
                                                    all_models_to_use)
     custom_bounds_path = pair_benchmark_dir + '/good_param_bounds.json'
-    json.dump(custom_param_bounds, open(custom_bounds_path, 'w'), 
+    json.dump(custom_param_bounds, open(custom_bounds_path, 'w'),
         indent=4)
     print('Pairs to test:')
 
@@ -66,5 +72,6 @@ if __name__ == "__main__":
 
     final_json = pair_benchmark_dir + '/pair_results.json'
     cmds += ' '.join(["python", "src/merge_jsons.py"]+ outputs + [final_json])
-    
+
     open(output_script, 'w').write(cmds)
+

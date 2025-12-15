@@ -7,8 +7,8 @@ import numpy as np
 import polars as pl
 from tqdm import tqdm
 
-from cross_validation import BasicEnsemble
-from ml_core.multi_input_clf import MultiInputNet
+from mf_swarm_lib.training.cross_validation import BasicEnsemble
+from mf_swarm_lib.core.ml.multi_input_clf import MultiInputNet
 
 class Node():
     def __init__(self, node_dir, model_name='standard_model'):

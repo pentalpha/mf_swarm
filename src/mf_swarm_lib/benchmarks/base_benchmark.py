@@ -1,0 +1,154 @@
+from datetime import datetime
+import json
+from multiprocessing import Pool
+from os import path
+import os
+import sys
+print('New thread', file=sys.stderr)
+
+os.environ["KERAS_BACKEND"] = "tensorflow"
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
+import keras
+from tqdm import tqdm
+import polars as pl
+from sklearn import metrics
+import numpy as np
+
+from mf_swarm_lib.core.metaheuristics import ProblemTranslator, RandomSearchMetaheuristic, param_bounds, GeneticAlgorithm
+from mf_swarm_lib.data.dataset import Dataset, find_latest_dataset
+from mf_swarm_lib.data.dimension_db import DimensionDB
+from mf_swarm_lib.core.node_factory import create_params_for_features, sample_train_test, train_node
+from mf_swarm_lib.utils.util_base import run_command
+
+class BaseBenchmarkRunner():
+    def __init__(self, param_translator, node, features):
+        self.new_param_translator = param_translator
+        self.node = node
+        self.features = features
+        
+    def objective_func(self, solution):
+        #print('objective_func', file=sys.stderr)
+        new_params_dict = self.new_param_translator.decode(solution)
+        self.node['params_dict'] = new_params_dict
+        #print('getting roc_auc s', file=sys.stderr)
+        model_obj, metrics = train_node(self.node, self.features)
+        print(metrics)
+        #print(roc_aucs, file=sys.stderr)
+        #print('objective_func finish', file=sys.stderr)
+        return metrics
+
+def run_validation(node, solution_dict, features):
+    node['params_dict'] = solution_dict
+    annot_model, stats = train_node(node, features)
+    print('Validating')
+    val_path = node['node']['val_path']
+    go_labels = node['node']['go']
+    val_df = pl.read_parquet(val_path)
+    val_x_np = []
+    for col in features:
+        val_x_np.append(val_df[col].to_numpy())
+    val_df_y_np = val_df['labels'].to_numpy()
+    val_y_pred = annot_model.predict(val_x_np, verbose=0)
+    acc = np.mean(keras.metrics.binary_accuracy(val_df_y_np, val_y_pred).numpy())
+    roc_auc_score_mac = metrics.roc_auc_score(val_df_y_np, val_y_pred, average='macro')
+    roc_auc_score_w = metrics.roc_auc_score(val_df_y_np, val_y_pred, average='weighted')
+    auprc_mac = metrics.average_precision_score(val_df_y_np, val_y_pred)
+    auprc_w = metrics.average_precision_score(val_df_y_np, val_y_pred, average='weighted')
+    print(roc_auc_score_w)
+    y_pred_04 = (val_y_pred > 0.4).astype(int)
+    y_pred_05 = (val_y_pred > 0.5).astype(int)
+    y_pred_06 = (val_y_pred > 0.6).astype(int)
+    f1_score = metrics.f1_score(val_df_y_np, y_pred_05, average='macro')
+    f1_score_w_05 = metrics.f1_score(val_df_y_np, y_pred_05, average='weighted')
+    f1_score_w_06 = metrics.f1_score(val_df_y_np, y_pred_06, average='weighted')
+    recall_score = metrics.recall_score(val_df_y_np, y_pred_05, average='macro')
+    recall_score_w_05 = metrics.recall_score(val_df_y_np, y_pred_05, average='weighted')
+    recall_score_w_06 = metrics.recall_score(val_df_y_np, y_pred_06, average='weighted')
+    precision_score = metrics.precision_score(val_df_y_np, y_pred_05, average='macro')
+    precision_score_w_05 = metrics.precision_score(val_df_y_np, y_pred_05, average='weighted')
+    precision_score_w_06 = metrics.precision_score(val_df_y_np, y_pred_06, average='weighted')
+    
+    val_stats = {'ROC AUC': float(roc_auc_score_mac),
+        'ROC AUC W': float(roc_auc_score_w),
+        'AUPRC': float(auprc_mac),
+        'AUPRC W': float(auprc_w),
+        'Accuracy': float(acc), 
+        'f1_score': f1_score,
+        'f1_score_w_05': f1_score_w_05,
+        'f1_score_w_06': f1_score_w_06,
+        'recall_score': recall_score,
+        'recall_score_w_05': recall_score_w_05,
+        'recall_score_w_06': recall_score_w_06,
+        'precision_score': precision_score,
+        'precision_score_w_05': precision_score_w_05,
+        'precision_score_w_06': precision_score_w_06,
+        'val_x': len(val_df),
+        'quickness': stats['quickness']
+    }
+
+    metric_weights = [('ROC AUC W', 4), ('AUPRC', 4), 
+                      ('quickness', 1)]
+    w_total = sum([w for m, w in metric_weights])
+    val_stats['fitness'] = sum([val_stats[m]*w for m, w in metric_weights]) / w_total
+
+    results = {
+        'test': stats,
+        'validation': val_stats,
+        'go_labels': go_labels,
+    }
+
+    validation_solved_df = pl.DataFrame(
+        {
+            'id': val_df['id'].to_list(),
+            'y': val_df_y_np,
+            'y_pred': val_y_pred
+        }
+    )
+    
+    return results, validation_solved_df
+
+def run_basebenchmark_test(exp):
+    print('Preparing', exp['name'], exp['features'])
+    name = exp['name']
+    features = exp['features']
+    nodes = exp['nodes']
+    node_name = list(nodes.keys())[0]
+    node = nodes[node_name]
+
+    local_dir = exp['local_dir']
+    test_perc = exp['test_perc']
+
+    run_command(['mkdir -p', local_dir])
+
+    print('Separating train and test', exp['name'])
+    sample_train_test(node['traintest_path'], features, test_perc)
+    params_dict = {
+        'test_perc': test_perc,
+        'node': node,
+        'node_name': node_name
+    }
+
+    print('Preparing', exp['name'])
+    params_dict_custom = create_params_for_features(features, convert_plm_dims=True)
+    del params_dict_custom['taxa']
+    del params_dict_custom['taxa_profile']
+    problem_translator = ProblemTranslator(params_dict_custom)
+    json.dump(problem_translator.to_dict(), open(local_dir + '/params_dict_custom.json', 'w'), indent=4)
+    #meta_test = MetaheuristicTest(name, params_list, features, 11)
+    heuristic_model = RandomSearchMetaheuristic(name, problem_translator, 120,
+        n_jobs=7, metric_name="fitness", metric_name2 = 'f1_score_w_06')
+    runner = BaseBenchmarkRunner(problem_translator, params_dict, features)
+    print('Running', exp['name'])
+    best_solution, fitness, report = heuristic_model.run_tests(
+        runner.objective_func, gens=4, top_perc=0.6, log_dir=local_dir)
+    solution_dict = problem_translator.decode(best_solution)
+    print('Saving', exp['name'])
+    meta_report_path = local_dir + '/optimization.txt'
+    open(meta_report_path, 'w').write(report)
+    json.dump(solution_dict, open(local_dir + '/solution.json', 'w'), indent=4)
+
+    val_results, validation_solved_df = run_validation(params_dict, solution_dict, features)
+    validation_solved_df.write_parquet(local_dir+'/validation.parquet')
+    return val_results
+

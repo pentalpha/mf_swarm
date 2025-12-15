@@ -2,12 +2,14 @@ from glob import glob
 import sys
 import json
 from os import path
+
 import pandas as pd
 from tqdm import tqdm
 from sklearn import metrics as sk_metrics
 import polars as pl
-from param_translator import ProblemTranslator
-from util_base import plm_sizes
+
+from mf_swarm_lib.core.param_translator import ProblemTranslator
+from mf_swarm_lib.utils.util_base import plm_sizes
 
 def calc_additional_metrics(validation_df_path, use_cache=True):
     dir_to_save = path.dirname(validation_df_path)
@@ -282,3 +284,26 @@ def load_gens_df(benchmark_path):
     df = pd.DataFrame(rows)
 
     return df
+
+
+def load_swarm_params_and_results_jsons(full_swarm_exp_dir):
+    node_dirs = glob(full_swarm_exp_dir + '/Level-*')
+    node_dicts = [x+'/exp_params.json' for x in node_dirs]
+    node_results = [x+'/exp_results.json' for x in node_dirs]
+
+    params_jsons = []
+    results_jsons = []
+    for exp_params, exp_results in zip(node_dicts, node_results):
+        if not path.exists(exp_params):
+            params_jsons.append(exp_params.replace('exp_params.json', 'standard_params.json'))
+        else:
+            params_jsons.append(exp_params)
+        std_results = exp_results.replace('exp_results.json', 'standard_results.json')
+        if path.exists(exp_results):
+            results_jsons.append(exp_results)
+        elif path.exists(std_results):
+            results_jsons.append(std_results)
+        else:
+            results_jsons.append(None)
+
+    return params_jsons, results_jsons

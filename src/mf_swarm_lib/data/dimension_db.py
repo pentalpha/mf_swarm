@@ -8,7 +8,7 @@ import numpy as np
 
 import pyarrow.parquet as pq
 
-from util_base import concat_lists, run_command, irrelevant_mfs
+from mf_swarm_lib.utils.util_base import concat_lists, run_command, irrelevant_mfs
 
 protein_dimension_db_url = 'https://ucrania.imd.ufrn.br/~pitagoras/protein_dimension_db'
 #protein_dimension_db_url = '$UCRANIA_INTERNAL/~pitagoras/protein_dimension_db'

@@ -1,4 +1,8 @@
+import sys
+import os
 
+# Add the directory containing mf_swarm_lib to the python path (src/)
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 import json
 import sys
@@ -9,18 +13,17 @@ import matplotlib.pyplot as plt
 from decimal import Decimal
 import pandas as pd
 from matplotlib.patches import ConnectionPatch, Rectangle
-#from mpl_toolkits.axes_grid1.inset_locator import zoomed_inset_axes, mark_inset
 import matplotlib.patheffects as pe
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.cm import ScalarMappable
 import matplotlib.patheffects as pe
-from node_factory import save_classifier_architecture
-from parsing import load_final_metrics, load_final_solutions
-from plotting import model_colors, plot_taxon_metrics
-from util_base import calc_n_params, plm_sizes
+from mf_swarm_lib.core.node_factory import save_classifier_architecture
+from mf_swarm_lib.utils.parsing import load_final_metrics, load_final_solutions
+from mf_swarm_lib.utils.plotting import model_colors, plot_taxon_metrics
+from mf_swarm_lib.utils.util_base import calc_n_params, plm_sizes
 from tqdm import tqdm
+from mf_swarm_lib.benchmarks.summarize_taxa_benchmark import *
 
-#Equivalent to summarize_pairs_benchmark.py, but for taxa benchmark + the final table from pairs benchmark
 if __name__ == '__main__':
     taxa_benchmark_dir = sys.argv[1]
     plot_others = sys.argv[2] == 'True'
@@ -42,19 +45,19 @@ if __name__ == '__main__':
     else:
         more_results = []
 
-    metrics_to_use = ['f1_score_w_05', 'ROC AUC', 'ROC AUC W', 
+    metrics_to_use = ['f1_score_w_05', 'ROC AUC', 'ROC AUC W',
                       'precision_score_w_06', 'recall_score', 'Accuracy',
-                      'quickness', 'fitness', 'AUPRC', 'AUPRC W', 
-                      'WORST AUPRC W', 'BEST AUPRC W', 
+                      'quickness', 'fitness', 'AUPRC', 'AUPRC W',
+                      'WORST AUPRC W', 'BEST AUPRC W',
                       'WORST ROC AUC W', 'BEST ROC AUC W',
-                      'WORST AUPRC', 'BEST AUPRC', 
+                      'WORST AUPRC', 'BEST AUPRC',
                       'WORST ROC AUC', 'BEST ROC AUC']
-    metric_pretty_names = ['F1 Score (W)', 'ROC AUC Score', 'ROC AUC Score (W)', 
+    metric_pretty_names = ['F1 Score (W)', 'ROC AUC Score', 'ROC AUC Score (W)',
                         'Precision Score (W)', 'Recall Score', 'Binary Accuracy',
-                        'Quickness', 'Fitness', 'AUPRC Score', 'AUPRC Score (W)', 
-                        'WORST AUPRC Score (W)', 'BEST AUPRC Score (W)', 
-                        'WORST ROC AUC Score (W)', 'BEST ROC AUC Score (W)', 
-                        'WORST AUPRC Score', 'BEST AUPRC Score', 
+                        'Quickness', 'Fitness', 'AUPRC Score', 'AUPRC Score (W)',
+                        'WORST AUPRC Score (W)', 'BEST AUPRC Score (W)',
+                        'WORST ROC AUC Score (W)', 'BEST ROC AUC Score (W)',
+                        'WORST AUPRC Score', 'BEST AUPRC Score',
                         'WORST ROC AUC Score', 'BEST ROC AUC Score']
 
     determinant_metric = 'AUPRC Score (W)'
@@ -102,19 +105,19 @@ if __name__ == '__main__':
                 #print(new_perf)
     performances = [v for k, v in performances_dict.items()]
     performances.sort(
-        key=lambda p: (p['AUPRC Score (W)'], p['ROC AUC Score (W)'], p['AUPRC Score']), 
+        key=lambda p: (p['AUPRC Score (W)'], p['ROC AUC Score (W)'], p['AUPRC Score']),
         reverse=True)
-    
+
     top_performance = performances[0]
 
     columns = ['model', 'Type',
         'AUPRC Score (W)', 'ROC AUC Score (W)',
         'F1 Score (W)', 'Total Feature Length',
         'Classifier Parameters', 'Input Model Parameters', 'Total Parameters',
-        'ROC AUC Score', 'AUPRC Score', 
-        'WORST AUPRC Score (W)', 'BEST AUPRC Score (W)', 
+        'ROC AUC Score', 'AUPRC Score',
+        'WORST AUPRC Score (W)', 'BEST AUPRC Score (W)',
         'WORST ROC AUC Score (W)', 'BEST ROC AUC Score (W)',
-        'WORST AUPRC Score', 'BEST AUPRC Score', 
+        'WORST AUPRC Score', 'BEST AUPRC Score',
         'WORST ROC AUC Score', 'BEST ROC AUC Score',
         'Quickness', 'Precision Score (W)', 'Recall Score', 'Binary Accuracy',
         'Fitness', 'Metaparameters']
@@ -126,7 +129,7 @@ if __name__ == '__main__':
 
     performances_df['Models'] = performances_df['model'].apply(
         lambda txt: txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+'))
-    columns_simple = ['Models', 'Total Feature Length', 'Classifier Parameters', 'AUPRC Score (W)', 
+    columns_simple = ['Models', 'Total Feature Length', 'Classifier Parameters', 'AUPRC Score (W)',
                       'ROC AUC Score (W)', 'F1 Score (W)', 'Input Model Parameters']
     performances_df_simple = performances_df[columns_simple]
     performances_df_simple.to_csv(taxa_benchmark_dir + '/benchmark_simple.tsv', sep='\t', index=False)
@@ -168,7 +171,7 @@ if __name__ == '__main__':
         make_inset = 'Score' in metric_a and 'Score' in metric_b
         fig, ax_main = plt.subplots(1, 1, figsize=(10,6))
         if make_inset:
-            axin2 = ax_main.inset_axes([0.62, 0.02, 0.37, 0.4], 
+            axin2 = ax_main.inset_axes([0.62, 0.02, 0.37, 0.4],
                 xlim=(0.7695, 0.7809), ylim=(0.885,0.892), xticklabels=[], yticklabels=[])
         #axin2 = zoomed_inset_axes(ax_main, loc='lower right')
         for tp, color_name in type_to_color.items():
@@ -185,7 +188,7 @@ if __name__ == '__main__':
                     name = row['model']
                     test_tp = row['Type']
                     a.append(row[metric_a])
-                    
+
                     b.append(row[metric_b])
                     colors_big.append(row['Total Feature Length'])
                     '''if '-' in name:
@@ -197,7 +200,7 @@ if __name__ == '__main__':
                     sizes.append(300)
                     names.append(name)
 
-        
+
             #ax_main = axes[0]
             ax_main.scatter(a, b, s=sizes, c=colors_big, label=tp, cmap=cmap, marker=type_to_marker[tp], norm=norm)
             if make_inset:
@@ -208,8 +211,8 @@ if __name__ == '__main__':
                     txt = txt.replace('taxa', 'taxa_onehot')
                 '''if 'taxa' in txt:
                     txt = 'ankh_base-prottrans-\n'+txt'''
-                ax_main.annotate(txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+'), 
-                            (a[i], b[i]), 
+                ax_main.annotate(txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+'),
+                            (a[i], b[i]),
                             ha='center', va='bottom', fontsize=9, alpha=1,
                             path_effects=[pe.withStroke(linewidth=2, foreground="white")])
                 new_txt = txt.replace('prottrans', 'ProtT5').upper().replace('_', ' ').replace('-', '+')
@@ -220,8 +223,8 @@ if __name__ == '__main__':
                 if new_txt == 'ESM2 T33+PROTT5':
                     va2 = 'top'
                 if make_inset:
-                    axin2.annotate(new_txt, 
-                            (a[i], b[i]+vertical_diff), 
+                    axin2.annotate(new_txt,
+                            (a[i], b[i]+vertical_diff),
                             ha='center', va=va2, fontsize=9, alpha=1,
                             path_effects=[pe.withStroke(linewidth=2, foreground="white")])
         ax_main.set_xlabel(metric_a)
@@ -235,7 +238,7 @@ if __name__ == '__main__':
         leg.legend_handles[1].set_edgecolor('black')
         leg.legend_handles[2].set_facecolor('#00000000')
         leg.legend_handles[2].set_edgecolor('black')
-        fig.colorbar(ScalarMappable(norm=norm, cmap=cmap), 
+        fig.colorbar(ScalarMappable(norm=norm, cmap=cmap),
             ax=ax_main, label="Total Size of Input Features")
 
         if make_inset:
@@ -249,3 +252,4 @@ if __name__ == '__main__':
         fig.savefig(
             taxa_benchmark_dir+'/model_performance-'+metric_a+'_'+metric_b+'.png',
             dpi=300)
+

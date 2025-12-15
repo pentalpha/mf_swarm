@@ -4,7 +4,7 @@ import os
 from os import path
 import random
 import sys
-from ml_core.custom_statistics import faster_fmax
+from mf_swarm_lib.core.ml.custom_statistics import faster_fmax
 import polars as pl
 import numpy as np
 from pickle import load, dump
@@ -14,7 +14,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 import keras
 from keras.callbacks import EarlyStopping, ModelCheckpoint, LearningRateScheduler
-from keras.layers import Dense, Dropout, BatchNormalization, LeakyReLU, Concatenate, Input
+from keras.layers import (Dense, Dropout, BatchNormalization, LeakyReLU, 
+    Concatenate, Input)
 from keras.optimizers import Adam
 from keras.utils import plot_model
 from keras import Model
@@ -22,10 +23,10 @@ from keras import backend as K
 print(keras.__version__)
 from sklearn import metrics
 
-from metaheuristics import ProblemTranslator, param_bounds, RandomSearchMetaheuristic
-from parquet_loading import load_columns_from_parquet
-from util_base import run_command, plm_sizes
-
+from mf_swarm_lib.core.metaheuristics import (ProblemTranslator, param_bounds, \
+    RandomSearchMetaheuristic)
+from mf_swarm_lib.data.parquet_loading import load_columns_from_parquet
+from mf_swarm_lib.utils.util_base import run_command, plm_sizes
 
 def split_train_test(ids, X, Y):
 

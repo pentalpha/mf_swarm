@@ -3,6 +3,7 @@ from multiprocessing import Pool
 from os import path, remove
 import sys
 from time import sleep
+
 import requests
 
 def chunks(lst, n):
@@ -156,30 +157,5 @@ def consult_uniprot_ids(ids: list, cache_path: str, n_per_chunk: int = 100):
                 output.write(f'{uniprot_id}\t{annot_str}\n')
         close_locked_file(output, lock_path)
 
-if __name__ == '__main__':
-    #input fasta or txt file with uniprot ids
-    input_file = sys.argv[1]
-    #tsv file to save annotations
-    output_file = sys.argv[2]
-    results_cache = output_file + '.cache'
 
-    if path.exists(results_cache+'.lock'):
-        remove(results_cache+'.lock')
-
-    ids = []
-    with open(input_file, 'r') as infile:
-        for line in infile:
-            if 'fasta' in input_file:
-                if line.startswith('>'):
-                    newid = line.lstrip('>').split()[0].split('|')[0]
-                    ids.append(newid)
-            else:
-                ids.append(line.strip())
-
-    consult_uniprot_ids(ids, results_cache)
-
-    #Copy cache to final output
-    with open(results_cache, 'r') as cache_file, open(output_file, 'w') as out_file:
-        for line in cache_file:
-            out_file.write(line)
     

@@ -1,9 +1,9 @@
 import json
-import numpy as np
-import polars as pl
 from typing import List
 from os import path, listdir
 
+import numpy as np
+import polars as pl
 from tqdm import tqdm
 
 class VectorLoader:
@@ -128,24 +128,3 @@ def load_columns_from_parquet(file_path: str, column_names: List[str]) -> pl.Dat
     result = lazy_frame.collect()
     
     return result
-
-# Example usage
-if __name__ == "__main__":
-    # Initialize the VectorLoader with the directory containing Parquet files
-    loader = VectorLoader(parquet_directory='~/data/dimension_db/release_1')
-
-    all_ids = load_columns_from_parquet('~/data/dimension_db/release_1/emb.prottrans.parquet',
-        ['id'])['id'].to_list()
-    print(all_ids[-2], all_ids[-1])
-
-    # List of IDs (as strings) to load vectors for
-    ids_to_load = ["C0HLM2", "C0HM02", "P83480", "P86269", "P56207", "Q8K2Q5"
-        "Q8WZ42", "A2ASS6"]
-
-    # Load vectors
-    new_df = loader.load_vectors_by_ids(ids_to_load, dataset_names=[], remove_na=True)
-    print(new_df.head(8))
-
-    # Print the loaded vectors
-    #for vec_id, vector in zip(ids_to_load, vectors):
-    #    print(f"ID: {vec_id}, Vector: {vector}")

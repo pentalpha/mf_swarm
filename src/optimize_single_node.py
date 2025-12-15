@@ -4,15 +4,19 @@ import os
 from os import path
 from pickle import dump
 
+# Add the directory containing mf_swarm_lib to the python path (src/)
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
+
 print("New thread", file=sys.stderr)
 os.environ["KERAS_BACKEND"] = "tensorflow"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-from cross_validation import CrossValRunner, split_train_test_n_folds, validate_cv_model
-from metaheuristics import RandomSearchMetaheuristic
-from param_translator import ProblemTranslator
+from mf_swarm_lib.training.cross_validation import (CrossValRunner, 
+    split_train_test_n_folds, validate_cv_model)
+from mf_swarm_lib.core.metaheuristics import RandomSearchMetaheuristic
+from mf_swarm_lib.core.param_translator import ProblemTranslator
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print(sys.argv)
 
     params_json_path = sys.argv[1]

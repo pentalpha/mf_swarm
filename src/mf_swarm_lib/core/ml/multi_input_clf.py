@@ -1,5 +1,4 @@
 import os
-import pickle
 import json
 from typing import List
 
@@ -13,7 +12,7 @@ import numpy as np
 from tqdm import tqdm
 from sklearn import metrics
 
-from ml_core.custom_statistics import faster_fmax
+from mf_swarm_lib.core.ml.custom_statistics import faster_fmax
 
 def get_batch_of_indexes(n_samples, batch_size):
     n_batchs = int(n_samples / batch_size)

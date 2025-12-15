@@ -9,9 +9,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = ''
 import keras
 from sklearn import metrics
 
-from metaheuristics import ProblemTranslator, RandomSearchMetaheuristic
-from util_base import run_command, plm_sizes
-from node_factory import create_params_for_features, train_node
+from mf_swarm_lib.core.metaheuristics import ProblemTranslator, RandomSearchMetaheuristic
+from mf_swarm_lib.utils.util_base import run_command, plm_sizes
+from mf_swarm_lib.core.node_factory import create_params_for_features, train_node
 
 class MetaheuristicTest():
 

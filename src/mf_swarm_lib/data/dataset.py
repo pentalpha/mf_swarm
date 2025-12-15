@@ -14,10 +14,10 @@ import numpy as np
 import polars as pl
 from sklearn import metrics
 
-from ml_core.custom_statistics import create_random_baseline
-from dimension_db import DimensionDB
-from parquet_loading import VectorLoader
-from util_base import concat_lists, create_go_labels, run_command
+from mf_swarm_lib.core.ml.custom_statistics import create_random_baseline
+from mf_swarm_lib.data.dimension_db import DimensionDB
+from mf_swarm_lib.data.parquet_loading import VectorLoader
+from mf_swarm_lib.utils.util_base import concat_lists, create_go_labels, run_command
 
 dataset_types = {
     'base_benchmark',
@@ -582,18 +582,3 @@ def find_or_create_dataset(datasets_dir, dataset_type, min_proteins_per_mf,
         dataset.save(datasets_dir)
     
     return dataset, dimension_db
-
-if __name__ == "__main__":
-    dimension_db_releases_dir = sys.argv[1]
-    dimension_db_release_n = sys.argv[2]
-    datasets_dir = sys.argv[3]
-    #30
-    min_proteins_per_mf    = int(sys.argv[4])
-    dataset_type           = sys.argv[5]
-
-    assert dataset_type in dataset_types
-
-    dimension_db = DimensionDB(dimension_db_releases_dir, dimension_db_release_n, new_downloads=False)
-    dataset = Dataset(dimension_db=dimension_db, min_proteins_per_mf=min_proteins_per_mf, dataset_type=dataset_type)
-    if dataset.new_dataset:
-        dataset.save(datasets_dir)

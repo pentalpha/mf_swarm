@@ -6,7 +6,7 @@ from typing import List
 import numpy as np
 import json
 
-proj_dir = path.dirname(path.dirname(__file__))
+proj_dir = path.dirname(path.dirname(path.dirname(path.dirname(__file__))))
 configs_dir = proj_dir + '/config'
 
 general_configs = json.load(open(configs_dir+'/general_configs.json', 'r'))

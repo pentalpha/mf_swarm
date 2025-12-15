@@ -13,12 +13,12 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score
 from tqdm import tqdm
 
-from ml_core.custom_statistics import (calc_deepred_scores, eval_predictions_dataset, 
+from mf_swarm_lib.core.ml.custom_statistics import (calc_deepred_scores, eval_predictions_dataset, 
     eval_predictions_dataset_bool, find_best_threshold_per_col)
-from dimension_db import DimensionDB
-from parquet_loading import VectorLoader
-from util_base import run_command
-from node import (Node, go_descendants_dict, go_ancestors_dict, all_paths_to_root, 
+from mf_swarm_lib.data.dimension_db import DimensionDB
+from mf_swarm_lib.data.parquet_loading import VectorLoader
+from mf_swarm_lib.utils.util_base import run_command
+from mf_swarm_lib.core.node import (Node, go_descendants_dict, go_ancestors_dict, all_paths_to_root, 
     join_prediction_datasets, join_prediction_dfs_no_nodes)
 
 class Swarm:
