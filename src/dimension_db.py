@@ -15,7 +15,12 @@ protein_dimension_db_url = 'https://ucrania.imd.ufrn.br/~pitagoras/protein_dimen
 
 def load_annotation_terms(file_path: str):
     by_protein = {}
-    for rawline in gzip.open(file_path, 'rt'):
+    if file_path.endswith('.gz'):
+        f = gzip.open(file_path, 'rt')
+    else:
+        f = open(file_path, 'r')
+    
+    for rawline in f:
         cells = rawline.rstrip('\n').split("\t")
         uniprot = cells[0]
         mfs = cells[1].split(',')
@@ -27,8 +32,12 @@ def load_annotation_terms(file_path: str):
 class DimensionDB:
     def __init__(self, dimension_db_releases_dir, dimension_db_release_n, new_downloads = False) -> None:
         print('Creating file names')
-        self.release_dir        = path.join(dimension_db_releases_dir, 'release_' + dimension_db_release_n)
-        self.release_url        = protein_dimension_db_url + '/release_'+ dimension_db_release_n
+        if dimension_db_release_n.isdigit():
+            self.release_dir        = path.join(dimension_db_releases_dir, 'release_' + dimension_db_release_n)
+            self.release_url        = protein_dimension_db_url + '/release_'+ dimension_db_release_n
+        else:
+            self.release_dir        = path.join(dimension_db_releases_dir, dimension_db_release_n)
+            self.release_url        = protein_dimension_db_url + '/' + dimension_db_release_n
         self.plm_names          = ['esm2_t6', 'esm2_t12', 'esm2_t30', 
                                    'ankh_base', 'prottrans', 'esm2_t33', 'ankh_large', 
                                    'esm2_t36']
@@ -41,20 +50,45 @@ class DimensionDB:
         run_command(['mkdir -p', self.release_dir])
 
         self.feature_paths = {}
-        for n in self.taxa_onehot_names:
-            self.feature_paths[n] = path.join(self.release_dir, 'onehot.' + n + self.new_emb_extension)
-        for n in self.taxa_profile_names:
-            self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + self.new_emb_extension)
-        for n in self.plm_names:
-            self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + self.new_emb_extension)
-        for n in self.top_taxa_names:
-            self.feature_paths[n] = path.join(self.release_dir, n + '.txt')
+        if dimension_db_release_n == 'cafa6':
+            print('Configuring for CAFA6 Private Release')
+            # CAFA6 specific paths
+            for n in self.taxa_onehot_names:
+                self.feature_paths[n] = path.join(self.release_dir, 'onehot.' + n + '.train.parquet')
+            for n in self.taxa_profile_names:
+                self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + '.train.parquet')
+            for n in self.plm_names:
+                self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + '.train.parquet')
+            for n in self.top_taxa_names:
+                self.feature_paths[n] = path.join(self.release_dir, n + '.txt')
 
-        self.fasta_path = path.join(self.release_dir, 'uniprot_sorted.not_large.fasta')
-        self.taxids_path = path.join(self.release_dir, 'taxid.tsv')
-        self.ids_uniprot_path = path.join(self.release_dir, 'ids.txt')
-        self.mf_gos_path = path.join(self.release_dir, 'go.experimental.mf.tsv.gz')
-        self.go_basic_path = path.join(self.release_dir, 'go-basic.obo')
+            self.fasta_path = path.join(self.release_dir, 'sequences.train.fasta')
+            self.taxids_path = path.join(self.release_dir, 'taxid.train.tsv')
+            self.ids_uniprot_path = path.join(self.release_dir, 'ids.train.txt')
+            self.mf_gos_path = path.join(self.release_dir, 'go.experimental.mf.tsv')
+            self.go_basic_path = path.join(self.release_dir, 'go-basic.obo')
+            # Note: fallback to standard naming if specific file missing is handled by missing file check?
+            # User provided list has go.experimental.mf.tsv.
+            
+            # Disable downloads for cafa6
+            new_downloads = False
+        else:
+            # Standard Release paths
+            for n in self.taxa_onehot_names:
+                self.feature_paths[n] = path.join(self.release_dir, 'onehot.' + n + self.new_emb_extension)
+            for n in self.taxa_profile_names:
+                self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + self.new_emb_extension)
+            for n in self.plm_names:
+                self.feature_paths[n] = path.join(self.release_dir, 'emb.' + n + self.new_emb_extension)
+            for n in self.top_taxa_names:
+                self.feature_paths[n] = path.join(self.release_dir, n + '.txt')
+
+            self.fasta_path = path.join(self.release_dir, 'uniprot_sorted.not_large.fasta')
+            self.taxids_path = path.join(self.release_dir, 'taxid.tsv')
+            self.ids_uniprot_path = path.join(self.release_dir, 'ids.txt')
+            self.mf_gos_path = path.join(self.release_dir, 'go.experimental.mf.tsv.gz')
+            self.go_basic_path = path.join(self.release_dir, 'go-basic.obo')
+
         self.other_files = [self.fasta_path, self.taxids_path, self.ids_uniprot_path, 
                             self.mf_gos_path, self.go_basic_path]
 
