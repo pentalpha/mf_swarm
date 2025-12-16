@@ -228,10 +228,11 @@ class DimensionDB:
                 traintest_set.update(ids_train)
         
         #print('Splitting', len(unfrequent_taxid_proteins), 'proteins in unfrequent taxa')
-        ids_train, ids_validation = train_test_split(list(unfrequent_taxid_proteins), 
-            test_size = val_perc)
-        val_set.update(ids_validation)
-        traintest_set.update(ids_train)
+        if len(unfrequent_taxid_proteins) > 0:
+            ids_train, ids_validation = train_test_split(list(unfrequent_taxid_proteins), 
+                test_size = val_perc)
+            val_set.update(ids_validation)
+            traintest_set.update(ids_train)
 
         return traintest_set, val_set
 

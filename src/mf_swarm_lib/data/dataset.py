@@ -337,6 +337,8 @@ class Dataset:
             mkdir(tmp_dir)
         
         self.release_n = dimension_db.release_dir.split("_")[-1]
+        if 'cafa' in dimension_db.release_dir:
+            self.release_n = path.basename(dimension_db.release_dir)
         self.min_proteins_per_mf = min_proteins_per_mf
         self.dataset_type = dataset_type
         self.dataset_name = dataset_type + '_' + '{date:%Y-%m-%d_%H-%M-%S}'.format(date=datetime.now())
@@ -365,8 +367,20 @@ class Dataset:
                 self.datasets_to_load = ['taxa_256', 'ankh_base', 'esm2_t33']
         elif dataset_type in ["full_swarm", 'small_swarm']:
             print('Dataset.full_mf_goids_clustering')
-            go_clusters = Dataset.full_mf_goids_clustering(dimension_db, go_freqs, len(traintest_set))
+            go_clusters = Dataset.full_mf_goids_clustering(dimension_db, go_freqs, 
+                len(traintest_set), is_test=False)
+            if dataset_type == 'small_swarm':
+                cluster_names_all = sorted(go_clusters.keys())
+                print('All clusters: ', cluster_names_all)
+                small_cluster_names = [cluster_names_all[0],
+                    cluster_names_all[len(cluster_names_all)//2],
+                    cluster_names_all[-1]]
+                print('Only using: ', small_cluster_names)
+                go_clusters = {c_name: go_clusters[c_name] for c_name in small_cluster_names}
             self.datasets_to_load = ['taxa_256', 'ankh_base', 'esm2_t33']
+        if 'cafa' in self.release_n:
+            self.datasets_to_load = [dataset_name + '.train' 
+                for dataset_name in self.datasets_to_load]
         self.dataset_params['datasets_to_load'] = self.datasets_to_load
 
         self.go_clusters = {}
@@ -449,6 +463,8 @@ class Dataset:
         level_go_freqs = [(go, go_freqs[go]) for go in goids 
             if (go_freqs[go] / n_proteins) < 0.9]
         level_go_freqs.sort(key=lambda tp: tp[1])
+        print('Level', level, 'GO Frequencies:', level_go_freqs)
+        print('Proteins:', n_proteins, 'Percentiles:', percentiles)
         
         #print('Counting percentiles')
         perc_index = []
@@ -462,7 +478,7 @@ class Dataset:
         
         total_len = 0
         last_cluster_name = None
-        to_use = test_nodes[level] if level in test_nodes else []
+        current_level_test_node_names = test_nodes[level] if level in test_nodes else []
         
         current_percentile = 0
         to_keep = []
@@ -478,8 +494,13 @@ class Dataset:
             if len(sub_gos) > 2:
                 cluster_name = ('Level-'+str(level)+'_Freq-'+str(min_freq)+'-'
                     +str(max_freq)+'_N-'+str(len(sub_gos)))
-                if current_percentile in to_use or not only_test_nodes:
+                if only_test_nodes:
+                    if current_percentile in current_level_test_node_names:
+                        to_keep.append(cluster_name)
+                else:
                     to_keep.append(cluster_name)
+                #if current_percentile in current_level_test_node_names or not only_test_nodes:
+                #    to_keep.append(cluster_name)
                 level_clusters[cluster_name] = cluster_goids
                 #print(cluster_name.split('_'))
             else:
@@ -490,7 +511,10 @@ class Dataset:
                 new_cluster = last_cluster + cluster_goids
                 cluster_name = ('Level-'+str(level)+'_Freq-'+str(last_min_freq)+'-'
                     +str(max_freq)+'_N-'+str(len(new_cluster)))
-                if current_percentile in to_use or not only_test_nodes:
+                if only_test_nodes:
+                    if current_percentile in current_level_test_node_names:
+                        to_keep.append(cluster_name)
+                else:
                     to_keep.append(cluster_name)
                 level_clusters[cluster_name] = new_cluster
                 del level_clusters[last_cluster_name]
@@ -532,9 +556,13 @@ class Dataset:
         del go_levels_2
 
         clusters = {}
-        test_nodes = {4: [0], 5: [0], 6: [0, 1], 7: [0, 1, 2]}
+        if is_test:
+            test_nodes = {4: [0], 5: [0], 6: [0, 1], 7: [0, 1, 2]}
+        else:
+            test_nodes = {}
         for level_name, goids in levels.items():
-            new_clusters, new_to_keep = Dataset.full_mf_goids_clustering_level_iteration(level_name, goids, go_freqs, 
+            new_clusters, new_to_keep = Dataset.full_mf_goids_clustering_level_iteration(
+                level_name, goids, go_freqs, 
                 test_nodes, n_proteins, percentiles, only_test_nodes=is_test)
             for n in new_to_keep:
                 clusters[n] = new_clusters[n]
