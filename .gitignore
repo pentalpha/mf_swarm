@@ -8,6 +8,8 @@ __pycache__/
 up.sh
 test/*
 
+*.stdout
+*.sif
 # Distribution / packaging
 .Python
 build/
