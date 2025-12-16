@@ -4,13 +4,7 @@ import sys
 from glob import glob
 from tqdm import tqdm
 
-if __name__ == '__main__':
-    prot_dimension_db_release_path = sys.argv[1]
-    min_protein_annots = sys.argv[2]
-    val_part = sys.argv[3]
-    interpro_res = sys.argv[4]
-    output_dir = sys.argv[5]
-
+def run(prot_dimension_db_release_path, min_protein_annots, val_part, interpro_res, output_dir):
     validation_split_dir = prot_dimension_db_release_path + f'/validation_splits/min_prot{min_protein_annots}_val{val_part}'
     val_ids = validation_split_dir+'/validation_ids.txt'
 
@@ -75,5 +69,3 @@ if __name__ == '__main__':
     print(final_results_df)
     print(final_results_df.shape)
     final_results_df.write_parquet(output_dir + '/interpro_validation-preds.parquet')
-
-    

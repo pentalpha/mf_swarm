@@ -154,6 +154,77 @@ def convert_using_col_thresholds(scores_matrix: np.ndarray,
     val_y_pred_bool = np.asarray(bool_pred_lines)
     return val_y_pred_bool
 
+def eval_predictions(true_labels_f, val_y_pred_f, 
+        go_id_sequence=None,
+        thresholds=None):
+    
+    baseline_pred_f = np.random.rand(*val_y_pred_f.shape)
+
+    print('True labels:')
+    print(true_labels_f)
+    print('Scores:')
+    print(val_y_pred_f)
+    print('Baseline:')
+    print(baseline_pred_f)
+    print('Comparing')
+    fmax, bestrh = faster_fmax(val_y_pred_f, true_labels_f)
+    print('fmax', fmax, 'bestrh', bestrh)
+
+    if go_id_sequence != None and thresholds == None:
+        thresholds = find_best_threshold_per_col(val_y_pred_f, true_labels_f, 
+            go_id_sequence)
+    
+    if go_id_sequence != None and thresholds != None:
+        # If go_id_sequence and thresholds are provided, use them to filter scores
+        val_y_pred_bool = convert_using_col_thresholds(val_y_pred_f, thresholds, go_id_sequence)
+        bool_metrics = eval_predictions_dataset_bool(val_y_pred_bool, true_labels_f > 0)
+    else:
+        val_y_pred_bool = val_y_pred_f > bestrh
+        bool_metrics = eval_predictions_dataset_bool(val_y_pred_bool, true_labels_f > 0)
+    print('Boolean metrics:')
+    print(json.dumps(bool_metrics, indent=2))
+    
+    roc_auc_score_mac = metrics.roc_auc_score(true_labels_f, val_y_pred_f, average='macro')
+    roc_auc_score_mac_base = metrics.roc_auc_score(true_labels_f, baseline_pred_f, average='macro')
+    roc_auc_score_mac_norm = norm_with_baseline(roc_auc_score_mac, roc_auc_score_mac_base)
+    print('roc_auc_score_mac', roc_auc_score_mac, roc_auc_score_mac_norm)
+    roc_auc_score_w = metrics.roc_auc_score(true_labels_f, val_y_pred_f, average='weighted')
+    roc_auc_score_w_base = metrics.roc_auc_score(true_labels_f, baseline_pred_f, average='weighted')
+    roc_auc_score_w_norm = norm_with_baseline(roc_auc_score_w, roc_auc_score_w_base)
+    print('roc_auc_score_w', roc_auc_score_w, roc_auc_score_w_norm)
+    auprc_mac = metrics.average_precision_score(true_labels_f, val_y_pred_f)
+    auprc_mac_base = metrics.average_precision_score(true_labels_f, baseline_pred_f)
+    auprc_mac_norm = norm_with_baseline(auprc_mac, auprc_mac_base)
+    print('auprc_mac', auprc_mac, auprc_mac_norm)
+    auprc_w = metrics.average_precision_score(true_labels_f, val_y_pred_f, average='weighted')
+    auprc_w_base = metrics.average_precision_score(true_labels_f, baseline_pred_f, average='weighted')
+    auprc_w_norm = norm_with_baseline(auprc_w, auprc_w_base)
+    print('auprc_w', auprc_w, auprc_w_norm)
+    new_m = {
+        'raw':{
+            'ROC AUC': float(roc_auc_score_mac),
+            'ROC AUC W': float(roc_auc_score_w),
+            'AUPRC': float(auprc_mac),
+            'AUPRC W': float(auprc_w)
+        },
+        'boolean': bool_metrics,
+        'ROC AUC': float(roc_auc_score_mac_norm),
+        'ROC AUC W': float(roc_auc_score_w_norm),
+        'AUPRC': float(auprc_mac_norm),
+        'AUPRC W': float(auprc_w_norm),
+        'Fmax': fmax,
+        'Best F1 Threshold': bestrh,
+        'bases': {
+            'ROC AUC': float(roc_auc_score_mac_base),
+            'ROC AUC W': float(roc_auc_score_w_base),
+            'AUPRC': float(auprc_mac_base),
+            'AUPRC W': float(auprc_w_base),
+        },
+        'N Proteins': true_labels_f.shape[0]
+    }
+
+    return new_m
+
 def eval_predictions_dataset(df: pl.DataFrame, truth_col = 'labels', scores_col='scores', 
         go_id_sequence=None,
         thresholds=None) -> dict:
@@ -280,4 +351,32 @@ def calc_deepred_scores(raw_df: pl.DataFrame, go_id_sequence: list,
     return deepred_metrics
 
 
-    
+def calc_metrics_at_freq_threshold(col_sums, true_labels, val_y_pred, 
+        min_freq, labels_sequence):
+    print('min freq:', min_freq)
+    valid_cols = col_sums > min_freq
+    valid2 = col_sums < true_labels.shape[0]
+    valid_cols = np.array([a and b for a,b in zip(valid_cols, valid2)])
+    print('true_labels')
+    #print(true_labels)
+    print(true_labels.shape)
+    print('val_y_pred')
+    #print(val_y_pred)
+    print(val_y_pred.shape)
+    print('valid_cols')
+    #print(valid_cols)
+    print(valid_cols.shape)
+    print('col_sums')
+    #print(col_sums)
+    print(col_sums.shape)
+    labels_sequence2 = [labels_sequence[i] for i in range(len(labels_sequence)) if valid_cols[i]]
+    true_labels_f = true_labels[:, valid_cols]
+    val_y_pred_f = val_y_pred[:, valid_cols]
+
+    m = eval_predictions( 
+        true_labels_f, val_y_pred_f, 
+        go_id_sequence=labels_sequence2,
+        thresholds=None)
+    m['Tool Labels'] = len(labels_sequence)
+    m['Evaluated Labels'] = len(labels_sequence2)
+    return m

@@ -9,8 +9,8 @@ from glob import glob
 from tqdm import tqdm
 import os
 
-from stats_custom import calc_metrics_at_freq_threshold
-from go_expansion import gos_not_to_use, load_go_graph, create_expanded_df
+from mf_swarm_lib.core.ml.custom_statistics import calc_metrics_at_freq_threshold
+from mf_swarm_lib.utils.go_expansion import gos_not_to_use, load_go_graph, create_expanded_df
 
 freq_thresholds = [3]
 N_PROCS = 7

@@ -4,37 +4,32 @@ import sys
 from glob import glob
 from tqdm import tqdm
 
-if __name__ == '__main__':
-    prot_dimension_db_release_path = sys.argv[1]
-    min_protein_annots = sys.argv[2]
-    val_part = sys.argv[3]
-    deepgose_dfs_dir = sys.argv[4]
-    output_dir = sys.argv[5]
-
+def run(prot_dimension_db_release_path, min_protein_annots, val_part, annopro_res_dir, output_dir):
     validation_split_dir = prot_dimension_db_release_path + f'/validation_splits/min_prot{min_protein_annots}_val{val_part}'
     val_ids = validation_split_dir+'/validation_ids.txt'
 
     validation_proteins = open(val_ids, 'r').read().split('\n')
-
-    deepgose_df_paths = glob(deepgose_dfs_dir+'/*_mf.tsv.gz')
+    pattern = annopro_res_dir+'/*/mf_result.csv.gz'
+    print(pattern)
+    annoprodf_paths = glob(pattern)
     print('Scanning for all GO ids')
     all_gos = set()
-    for df_path in tqdm(deepgose_df_paths):
-        df = pl.read_csv(df_path, separator='\t', new_columns = ['id', 'go', 'score'], has_header=False)
-        all_gos.update(df['go'].to_list())
+    for df_path in tqdm(annoprodf_paths):
+        df = pl.read_csv(df_path, separator=',')
+        all_gos.update(df['GO-terms'].to_list())
     go_list = sorted(all_gos)
     go_pos = {go: index for index, go in enumerate(go_list)}
     print('Found', len(go_list), 'go ids')
-    open(output_dir+'/deepgose_validation-label_names.txt', 'w').write('\n'.join(go_list))
+    open(output_dir+'/annopro_validation-label_names.txt', 'w').write('\n'.join(go_list))
 
     print('Loading annotations')
     dfs = []
-    for df_path in tqdm(deepgose_df_paths):
-        df = pl.read_csv(df_path, separator='\t', new_columns = ['id', 'go', 'score'], has_header=False)
-        df_filtered = df.filter(pl.col('id').is_in(validation_proteins))
-        ids = df_filtered['id']
-        gos = df_filtered['go']
-        scores = df_filtered['score']
+    for df_path in tqdm(annoprodf_paths):
+        df = pl.read_csv(df_path, separator=',')
+        df_filtered = df.filter(pl.col('Proteins').is_in(validation_proteins))
+        ids = df_filtered['Proteins']
+        gos = df_filtered['GO-terms']
+        scores = df_filtered['Scores']
 
         protein_scores = {}
 
@@ -58,6 +53,4 @@ if __name__ == '__main__':
 
     print('Creating dataframe')
     final_results_df = pl.concat(dfs)
-    final_results_df.write_parquet(output_dir + '/deepgose_validation-preds.parquet')
-
-    
+    final_results_df.write_parquet(output_dir + '/annopro_validation-preds.parquet')

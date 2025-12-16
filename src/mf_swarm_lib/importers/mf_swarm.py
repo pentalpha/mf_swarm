@@ -6,10 +6,7 @@ import sys
 from glob import glob
 from tqdm import tqdm
 
-if __name__ == '__main__':
-    mf_swarm_trained_dir = sys.argv[1]
-    output_dir = sys.argv[2]
-
+def run(mf_swarm_trained_dir, output_dir):
     node_dirs = glob(mf_swarm_trained_dir+'/Level*')
     print('Scanning for all GO ids')
     all_gos = set()
