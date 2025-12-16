@@ -7,7 +7,7 @@ import numpy as np
 import polars as pl
 from tqdm import tqdm
 
-from mf_swarm_lib.training.cross_validation import BasicEnsemble
+from mf_swarm_lib.core.ensemble import BasicEnsemble
 from mf_swarm_lib.core.ml.multi_input_clf import MultiInputNet
 
 class Node():

@@ -18,7 +18,8 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 # from mf_swarm_lib.core.metaheuristics import ProblemTranslator, GeneticAlgorithm, RandomSearchMetaheuristic
 from mf_swarm_lib.data.dataset import Dataset, find_latest_dataset
 from mf_swarm_lib.data.dimension_db import DimensionDB
-from mf_swarm_lib.training.cross_validation import split_train_test_n_folds, BasicEnsemble
+from mf_swarm_lib.training.cross_validation import split_train_test_n_folds
+from mf_swarm_lib.core.ensemble import BasicEnsemble
 from mf_swarm_lib.core.node_factory import makeMultiClassifierModel
 # from mf_swarm_lib.core.node_factory import create_params_for_features, sample_train_test
 from mf_swarm_lib.utils.util_base import run_command

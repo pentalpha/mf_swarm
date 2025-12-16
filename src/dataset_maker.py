@@ -1,7 +1,7 @@
 
 import sys
 from mf_swarm_lib.data.dimension_db import DimensionDB
-from mf_swarm_lib.data.dataset import Dataset
+from mf_swarm_lib.data.dataset import Dataset, dataset_types
 
 if __name__ == "__main__":
     dimension_db_releases_dir = sys.argv[1]
