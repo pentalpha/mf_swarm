@@ -19,120 +19,92 @@ from mf_swarm_lib.core.ensemble import BasicEnsemble
 #from mf_swarm_lib.core.node_factory import makeMultiClassifierModel
 import polars as pl
     
-def split_train_test_n_folds(traintest_path, features, max_proteins=60000):
-    #Make sure the dataset is prepared as train_x, train_y, test_x and test_y binary files
-    #If not prepared, converts the parquet file to separate binary files and saves them
-    fold_ids = load_columns_from_parquet(traintest_path, ['fold_id'])
-    n_folds = fold_ids['fold_id'].max() + 1
-    base_dir = traintest_path.replace('.parquet', '_folds'+str(n_folds)+"_features-"+'-'.join(features))
+# Removed prepare_features_folds as it is now handled globally during dataset generation
+
+def prepare_labels_folds(labels_path, n_folds, max_proteins=60000):
+    base_dir = labels_path.replace('.parquet', '_folds'+str(n_folds))
     
     fold_ids = [str(i) for i in range(n_folds)]
-
-    train_x_basename = base_dir + '/train_x.obj'
     train_y_basename = base_dir + '/train_y.obj'
-    test_x_basename = base_dir + '/test_x.obj'
     test_y_basename = base_dir + '/test_y.obj'
 
-    folds = {fold_i: {
-            'train_x': train_x_basename.replace('.obj', '_'+fold_i+'.obj'),
+    flows = {fold_i: {
             'train_y': train_y_basename.replace('.obj', '_'+fold_i+'.obj'),
-            'test_x': test_x_basename.replace('.obj', '_'+fold_i+'.obj'),
             'test_y': test_y_basename.replace('.obj', '_'+fold_i+'.obj')
             }
         for fold_i in fold_ids}
 
-    all_paths = concat_lists([list(f.values()) for f in folds.values()])
-
+    all_paths = concat_lists([list(f.values()) for f in flows.values()])
     if all([path.exists(p) for p in all_paths]):
-        return True
-    else:
-        print('Preparing', base_dir)
-        run_command(['mkdir -p', base_dir])
-        cols_to_use = ['id', 'fold_id'] + features + ['labels']
-        traintest = load_columns_from_parquet(traintest_path, cols_to_use)
-        '''if len(traintest) > max_proteins:
-            print(traintest_path, 'is too large, sampling down')
-            traintest = traintest.sample(fraction=(max_proteins/len(traintest)), 
-                shuffle=True, seed=1337+int(fold_i))'''
+        return base_dir
+    
+    print('Preparing Labels Folds', base_dir)
+    run_command(['mkdir -p', base_dir])
+    
+    cols_to_use = ['id', 'fold_id', 'labels']
+    labels_df = pl.read_parquet(labels_path, columns=cols_to_use)
 
-        print('Separating splits', file=sys.stderr)
-        # Cria os folds usando a coluna fold_id já existente
-        traintest_parts = []
-        for fold_idx in range(n_folds):
-            part = traintest.filter(pl.col('fold_id') == fold_idx)
-            traintest_parts.append(part)
+    print('Separating splits', file=sys.stderr)
+    traintest_parts = []
+    for fold_idx in range(n_folds):
+        part = labels_df.filter(pl.col('fold_id') == fold_idx)
+        traintest_parts.append(part)
 
-        print('Using splits to create train/test folds', file=sys.stderr)
-        for test_fold_i, fold_parts_dict in folds.items():
-            train_parts = [part 
-                for i, part in enumerate(traintest_parts) 
-                if i != int(test_fold_i)]
-            test = traintest_parts[int(test_fold_i)]
-            train = pl.concat(train_parts)
+    print('Using splits to create train/test folds', file=sys.stderr)
+    for test_fold_i, fold_parts_dict in flows.items():
+        train_parts = [part 
+            for i, part in enumerate(traintest_parts) 
+            if i != int(test_fold_i)]
+        test = traintest_parts[int(test_fold_i)]
+        train = pl.concat(train_parts)
+    
+        train_y_np = train['labels'].to_numpy()
+        test_y_np = test['labels'].to_numpy()
         
-            feature_columns = [c for c in train.columns if not c in ['labels', 'fold_id', 'id']]
-            train_ids = train['id'].to_list()
-            train_x = train.select(feature_columns)
-            train_y = train.select('labels')
-            test_ids = test['id'].to_list()
-            test_x = test.select(feature_columns)
-            test_y = test.select('labels')
-
-            train_x_np = []
-            for col in train_x.columns:
-                train_x_np.append((col, train_x[col].to_numpy()))
-            train_y_np = train_y['labels'].to_numpy()
-
-            test_x_np = []
-            for col in test_x.columns:
-                test_x_np.append((col, test_x[col].to_numpy()))
-            test_y_np = test_y['labels'].to_numpy()
-            
-            to_save = [(fold_parts_dict['train_x'], train_x_np), 
-                    (fold_parts_dict['train_y'], train_y_np),
-                    (fold_parts_dict['test_x'], test_x_np),
-                    (fold_parts_dict['test_y'], test_y_np)]
-            if not path.exists('tmp'):
-                run_command(['mkdir', 'tmp'])
-            for p, obj in to_save:
-                dump(obj, open(p, 'wb'))
-
-            open(base_dir+'/train_ids_'+test_fold_i+'.txt', 'w').write('\n'.join(train_ids))
-            open(base_dir+'/test_ids_'+test_fold_i+'.txt', 'w').write('\n'.join(test_ids))
+        to_save = [(fold_parts_dict['train_y'], train_y_np),
+                (fold_parts_dict['test_y'], test_y_np)]
         
-        return True
-
+        if not path.exists('tmp'):
+            run_command(['mkdir', 'tmp'])
+        for p, obj in to_save:
+            dump(obj, open(p, 'wb'))
+    
+    return base_dir
 
 # Trains a node using cross-validation, returning an ensemble of models
-# The node is a dictionary with the parameters and paths to the data
-# The features are a list of feature names to be used in the model
-# n_folds is the number of folds to be used in cross-validation
-# max_proteins is the maximum number of proteins to be used in the training
-# The function returns an ensemble of models trained on the cross-validation folds
-# The models are trained using the makeMultiClassifierModel function
-# The stats_dicts are the statistics of the models trained on each fold
 def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins=60000):
     node = params['node']
     params_dict = params['params_dict']
 
-    traintest_path = node['traintest_path']
-    base_dir = traintest_path.replace('.parquet', 
-        '_folds'+str(n_folds)+"_features-"+'-'.join(features))
-    #print('loading', base_dir)
-    
+    labels_path = node['traintest_labels_path']
+    # Derive global features folds path. 
+    # labels_path: <dataset_dir>/labels_traintest_<cluster>.parquet
+    # folds dir: <dataset_dir>/features_traintest_folds<N>
+    dirname = path.dirname(labels_path)
+    features_base_dir = path.join(dirname, 'features_traintest_folds' + str(n_folds))
+
+    labels_base_dir = prepare_labels_folds(labels_path, n_folds, max_proteins)
+
     models = []
     stats_dicts = []
     for fold_i in range(n_folds):
         fold_i_str = str(fold_i)
 
-        train_x_name = base_dir + '/train_x_'+fold_i_str+'.obj'
-        train_y_name = base_dir + '/train_y_'+fold_i_str+'.obj'
-        test_x_name = base_dir + '/test_x_'+fold_i_str+'.obj'
-        test_y_name = base_dir + '/test_y_'+fold_i_str+'.obj'
+        train_x_name = features_base_dir + '/train_x_'+fold_i_str+'.obj'
+        test_x_name = features_base_dir + '/test_x_'+fold_i_str+'.obj'
+        
+        train_y_name = labels_base_dir + '/train_y_'+fold_i_str+'.obj'
+        test_y_name = labels_base_dir + '/test_y_'+fold_i_str+'.obj'
 
-        train_x = load(open(train_x_name, 'rb'))
+        # Load global generic feature folds
+        train_x_all = load(open(train_x_name, 'rb'))
+        test_x_all = load(open(test_x_name, 'rb'))
+        
+        # Filter to requested features
+        train_x = [(name, arr) for name, arr in train_x_all if name in features]
+        test_x = [(name, arr) for name, arr in test_x_all if name in features]
+        
         train_y = load(open(train_y_name, 'rb'))
-        test_x = load(open(test_x_name, 'rb'))
         test_y = load(open(test_y_name, 'rb'))
 
         annot_model, stats = makeMultiClassifierModel(train_x, train_y, test_x, test_y, 
@@ -141,7 +113,6 @@ def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins
         stats_dicts.append(stats)
         print(stats)
 
-    #print(params['cluster_name'], stats)
     annot_model = BasicEnsemble(models, stats_dicts)
     print(annot_model.stats)
 
@@ -165,8 +136,22 @@ class CrossValRunner():
         #print('objective_func finish', file=sys.stderr)
         return model_obj.stats
 
-def validate_cv_model_noretrain(annot_model, val_path, go_labels, features, baseline_values):
-    val_df = pl.read_parquet(val_path)
+def validate_cv_model_noretrain(annot_model, val_labels_path, go_labels, features, baseline_values):
+    # Derive features path
+    # val_labels_path: .../labels_val_<cluster>.parquet
+    # features_path: .../features_val.parquet
+    dirname = path.dirname(val_labels_path)
+    features_path = path.join(dirname, 'features_val.parquet')
+
+    labels_df = pl.read_parquet(val_labels_path, columns=['id', 'labels'])
+    features_df = pl.read_parquet(features_path, columns=['id'] + features)
+    
+    # Join on id
+    val_df = labels_df.join(features_df, on='id', how='inner')
+    
+    # Ensure order logic if needed, but 'inner' join usually keeps reasonable order. 
+    # Or just use the DF as is.
+    
     val_x_np = []
     for col in features:
         val_x_np.append(val_df[col].to_numpy())
@@ -236,7 +221,7 @@ def validate_cv_model(node, solution_dict, features, n_folds=5):
     node['params_dict'] = solution_dict
     annot_model = train_crossval_node(node, features, n_folds=n_folds)
     print('Validating')
-    val_path = node['node']['val_path']
+    val_path = node['node']['val_labels_path']
     baseline_values = node['node']['baseline_metrics']
     go_labels = node['node']['go']
     

@@ -20,3 +20,16 @@ if __name__ == "__main__":
         dataset_type=dataset_type, val_perc=val_perc)
     if dataset.new_dataset:
         dataset.save(datasets_dir)
+        
+        # Validate dataset integrity after creation
+        print("\n" + "="*70)
+        print("Dataset saved successfully. Running integrity validation...")
+        print("="*70)
+        validation_passed = dataset.validate_dataset_integrity(datasets_dir)
+        
+        if not validation_passed:
+            print("\n⚠️  WARNING: Some validation checks failed!")
+            print("Please review the errors above before using this dataset.")
+            sys.exit(1)
+        else:
+            print("\n✅ Dataset creation completed successfully with full integrity verification!")

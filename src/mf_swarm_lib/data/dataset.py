@@ -1,4 +1,5 @@
 from collections import Counter
+from pickle import dump
 from datetime import datetime
 from glob import glob
 import json
@@ -18,6 +19,9 @@ from mf_swarm_lib.core.ml.custom_statistics import create_random_baseline
 from mf_swarm_lib.data.dimension_db import DimensionDB
 from mf_swarm_lib.data.parquet_loading import VectorLoader
 from mf_swarm_lib.utils.util_base import concat_lists, create_go_labels, run_command
+from mf_swarm_lib.data.folding import validate_folds, prepare_global_feature_folds, prepare_label_folds_obj
+from mf_swarm_lib.data.clustering import base_benchmark_goids_clustering, full_mf_goids_clustering
+from mf_swarm_lib.data import validation
 
 dataset_types = {
     'base_benchmark',
@@ -57,73 +61,10 @@ def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release
     else:
         return None
 
-def separate_folds(traintest_df: pl.DataFrame, n_folds: int, cluster_go_proper_order):
-    if n_folds == 1:
-        traintest_df = traintest_df.with_columns(
-            fold_id=pl.lit(0)
-        )
-        return traintest_df, set()
+    # validate_folds moved to folding.py
 
-    #separate folds
-    max_tries = 50
-    best_n_gos = 0
-    best_split = None
-    gos_to_remove = set()
-    while max_tries > 0:
-        max_tries -= 1
-        traintest_ids = traintest_df['id'].to_list()
-        random.shuffle(traintest_ids)
 
-        #part_size = len(traintest_ids) // n_folds
-        #part_ids = [traintest_ids[i:i+part_size] for i in range(0, len(traintest_ids), part_size)]
-        #random.shuffle(part_ids)
-        part_ids = np.array_split(traintest_ids, n_folds)
-        parts = [traintest_df.filter(pl.col('id').is_in(local_part_ids.tolist())) for local_part_ids in part_ids]
-
-        #parts = [traintest_df.filter(pl.col('id').is_in(local_part_ids)) for local_part_ids in part_ids]
-        constant_labels = set()
-        for part in parts:
-            labels_np = part['labels'].to_numpy()
-            #get vector with sum of values at each collumn in the labels matrix
-            #the number of rows in matrix (nrows)
-            nrows = labels_np.shape[0]
-            labels_sum = np.sum(labels_np, axis=0)
-            non_constant = [s > 0 and s < nrows for s in labels_sum]
-            for go_id, non_constant in zip(cluster_go_proper_order, non_constant):
-                if not non_constant:
-                    constant_labels.add(go_id)
-        if len(constant_labels) == 0:
-            best_split = parts
-            best_n_gos = len(cluster_go_proper_order) - len(constant_labels)
-            print('No constant labels')
-            break
-        else:
-            current_n_gos = len(cluster_go_proper_order) - len(constant_labels)
-            print('Constant labels:', len(constant_labels), 'Non constant:', current_n_gos)
-            if current_n_gos > best_n_gos:
-                best_n_gos = current_n_gos
-                best_split = parts
-                gos_to_remove = constant_labels
-                print('Saved best split')
-    
-    if best_split == None:
-        for i in range(len(parts)):
-            parts[i] = parts[i].with_columns(
-                fold_id=pl.lit(i)
-            )
-        df_for_review = pl.concat(parts)
-        open('test/all_constant_labels-go_labels.txt', 'w').write(','.join(cluster_go_proper_order))
-        df_for_review.write_parquet('test/all_constant_labels.parquet')
-        print('Fatal error! Dataset containing only constant labels')
-        quit(1)
-
-    for i in range(len(best_split)):
-        best_split[i] = best_split[i].with_columns(
-            fold_id=pl.lit(i)
-        )
-    
-    traintest_folded = pl.concat(best_split)
-    return traintest_folded, gos_to_remove
+# prepare_global_feature_folds moved to folding.py
 
 
 class Dataset:
@@ -196,7 +137,7 @@ class Dataset:
         return traintest_ids
 
     def goids_to_cluster(self, cluster_name, cluster_gos, filtered_ann, 
-                         parquet_loader, traintest_set, val_set, tmp_dir,
+                         traintest_ids_with_folds: dict, val_ids, tmp_dir,
                          dimension_db,
                          max_proteins_traintest=None, 
                          n_folds=5):
@@ -204,30 +145,14 @@ class Dataset:
         cluster_ann = {k: v.intersection(cluster_gos) for k, v in filtered_ann.items()}
         cluster_ann = {k: v for k, v in cluster_ann.items() if len(v) > 0}
         
-        cluster_ids = [p for p in dimension_db.ids if p in cluster_ann]
-        non_cluster_ids = [p for p in dimension_db.ids if p not in cluster_ann]
+        
+        # Use all available IDs (both positive and negative samples)
+        traintest_ids = list(traintest_ids_with_folds.keys())
+        # val_ids is already a list passed in
+        
         cluster_gos_set = set(cluster_gos)
-        print('Creating DF', cluster_name, 'with', len(cluster_ids), 'proteins')
-        val_ids = list(val_set)
-        traintest_ids = list(traintest_set)
-        '''traintest_ids = set(cluster_ids).intersection(traintest_set)
-        negative_samples_n = int(len(traintest_ids) * 0.2)
-        if negative_samples_n < len(non_cluster_ids):
-            negative_samples = random.sample(non_cluster_ids, negative_samples_n)
-        else:
-            negative_samples = non_cluster_ids
-            negative_samples_n = len(negative_samples)
-        print(f'Traintest IDs: {len(traintest_ids)}')
-        print(f'Traintest negative IDs: {negative_samples_n}')
-        print(f'Validation IDs: {len(val_set)}')
-        traintest_ids = list(traintest_ids) + negative_samples
-        print(f'Traintest IDs 2: {len(traintest_ids)}')
-        #val_ids = set(cluster_ids).intersection(val_set)
-        val_ids = list(val_set)
-        if max_proteins_traintest:
-            if len(traintest_ids) > max_proteins_traintest:
-                traintest_ids = self.sample_proteins(max_proteins_traintest, traintest_ids, cluster_gos,
-                    cluster_ann)'''
+        print('Creating DF', cluster_name, 'with', len(traintest_ids) + len(val_ids), 'proteins')
+
         
         print('Counting proteins at each class')
         ann_by_go = {goid: {'traintest': [], 'val': []} for goid in cluster_gos_set}
@@ -242,38 +167,40 @@ class Dataset:
         for goid in cluster_gos:
             go_traintests = ann_by_go[goid]['traintest']
             go_val = ann_by_go[goid]['val']
-            print(goid, len(go_traintests), len(go_val))
-            if len(go_traintests) < 6:
+            # print(goid, len(go_traintests), len(go_val))
+            if len(go_traintests) < 4:
                 print(goid, 'has few samples in traintest set')
                 to_remove.append(goid)
-            elif len(go_val) < 6:
+            elif len(go_val) < 4:
                 print(goid, 'has few samples in validation set')
                 to_remove.append(goid)
         
-        print('Loading parquet')
-
-        cluster_df = parquet_loader.load_vectors_by_ids(
-            list(traintest_ids) + list(val_ids), 
-            self.datasets_to_load,
-            remove_na=True)
-        loaded_ids = cluster_df['id'].to_list()
+        print('Creating labels for dataset df')
+        loaded_ids = list(traintest_ids) + list(val_ids)
         print('Creating labels for dataset df')
         #print('All IDs:', loaded_ids)
         labels, cluster_go_proper_order = create_go_labels(loaded_ids, cluster_ann, 
             labels_to_ignore=set(to_remove))
         print('Labels shape:', labels.shape)
-        print('cluster_df:')
-        print(cluster_df)
-        cluster_df = cluster_df.with_columns(
-            labels=labels
-        )
-        print(len(cluster_df), 'proteins in cluster df')
-        traintest_df = cluster_df.filter(pl.col('id').is_in(set(traintest_ids)))
-        val_df = cluster_df.filter(pl.col('id').is_in(val_set))
+        
+        # Create pure label DFs
+        cluster_df = pl.DataFrame({
+            'id': loaded_ids,
+            'labels': labels
+        })
+
+        traintest_df = cluster_df.filter(pl.col('id').is_in(traintest_ids))
+        
+        # Add fold info
+        fold_ids = [traintest_ids_with_folds[pid] for pid in traintest_df['id'].to_list()]
+        traintest_df = traintest_df.with_columns(fold_id=pl.Series(fold_ids))
+        
+        val_df = cluster_df.filter(pl.col('id').is_in(val_ids))
+        
         print(len(traintest_df), 'proteins in cluster traintest df')
         print(len(val_df), 'proteins in cluster val df')
 
-        traintest_folded, gos_to_remove = separate_folds(
+        traintest_folded, gos_to_remove = validate_folds(
             traintest_df, 
             n_folds, cluster_go_proper_order)
 
@@ -305,9 +232,12 @@ class Dataset:
         auprc_mac_base = metrics.average_precision_score(val_df_y_np, rand_df_y_np)
         auprc_w_base = metrics.average_precision_score(val_df_y_np, rand_df_y_np, average='weighted')
 
-        print('Saving parquet to tmp')
-        traintest_df_path = tmp_dir + '/traintest_' + self.dataset_name + '-' + cluster_name + '.parquet'
-        val_df_path = tmp_dir + '/val_' + self.dataset_name + '-' + cluster_name + '.parquet'
+        print('Saving labels parquet to tmp')
+        traintest_labels_folds_dir_tmp = tmp_dir + '/labels_traintest_folds' + str(n_folds) + '_' + self.dataset_name + '-' + cluster_name
+        prepare_label_folds_obj(traintest_folded, n_folds, traintest_labels_folds_dir_tmp)
+
+        traintest_df_path = tmp_dir + '/labels_traintest_' + self.dataset_name + '-' + cluster_name + '.parquet'
+        val_df_path = tmp_dir + '/labels_val_' + self.dataset_name + '-' + cluster_name + '.parquet'
         traintest_folded.write_parquet(traintest_df_path)
         val_df.write_parquet(val_df_path)
         del traintest_df
@@ -318,8 +248,9 @@ class Dataset:
         cluster = {
             'id': loaded_ids,
             'go': cluster_go_proper_order,
-            'traintest_path': traintest_df_path,
-            'val_path': val_df_path,
+            'traintest_labels_path': traintest_df_path,
+            'val_labels_path': val_df_path,
+            'traintest_labels_folds_path': traintest_labels_folds_dir_tmp, # Store temp path to be moved later
             'baseline_metrics':{
                 'roc_auc_score_mac': roc_auc_score_mac_base,
                 'roc_auc_score_w': roc_auc_score_w_base,
@@ -356,8 +287,8 @@ class Dataset:
 
         print(self.dataset_params)
         if dataset_type in ['base_benchmark', 'taxon_benchmark', 'taxon_benchmark_cv']:
-            print('Dataset.base_benchmark_goids_clustering')
-            go_clusters = Dataset.base_benchmark_goids_clustering(dimension_db, go_freqs)
+            print('base_benchmark_goids_clustering')
+            go_clusters = base_benchmark_goids_clustering(dimension_db, go_freqs)
             max_proteins_traintest = 4500
             if dataset_type == 'base_benchmark':
                 self.datasets_to_load = dimension_db.plm_names
@@ -366,8 +297,8 @@ class Dataset:
             else:
                 self.datasets_to_load = ['taxa_256', 'ankh_base', 'esm2_t33']
         elif dataset_type in ["full_swarm", 'small_swarm']:
-            print('Dataset.full_mf_goids_clustering')
-            go_clusters = Dataset.full_mf_goids_clustering(dimension_db, go_freqs, 
+            print('full_mf_goids_clustering')
+            go_clusters = full_mf_goids_clustering(dimension_db, go_freqs, 
                 len(traintest_set), is_test=False)
             if dataset_type == 'small_swarm':
                 cluster_names_all = sorted(go_clusters.keys())
@@ -385,11 +316,74 @@ class Dataset:
 
         self.go_clusters = {}
         parquet_loader = VectorLoader(dimension_db.release_dir)
+        
+        print('Loading all vectors and assigning folds...')
+        # Pre-load all vectors to define the universe of proteins
+        # remove_na=True means checking availability in all datasets
+        traintest_set = list(traintest_set)
+        val_set = list(val_set)
+        all_candidate_ids = traintest_set + val_set
+        
+        vectors_df = parquet_loader.load_vectors_by_ids(
+            all_candidate_ids, 
+            self.datasets_to_load,
+            remove_na=True)
+        
+        available_ids = set(vectors_df['id'].to_list())
+        all_ordered_ids = vectors_df['id'].to_list()
+        
+        # Filter sets based on availability AND enforce order from vectors_df
+        traintest_set_set = set(traintest_set)
+        val_set_set = set(val_set)
+        
+        traintest_set = [pid for pid in all_ordered_ids if pid in traintest_set_set]
+        val_set = [pid for pid in all_ordered_ids if pid in val_set_set]
+        
+        # Assign folds to traintest set
+        # We shuffle a copy to assign random folds, but keep the original list ordered
+        traintest_for_folding = list(traintest_set)
+        random.shuffle(traintest_for_folding)
+        traintest_folds = np.array_split(traintest_for_folding, 5) # 5 folds constant
+        
+        traintest_ids_with_folds = {}
+        for fold_idx, fold_ids in enumerate(traintest_folds):
+            for pid in fold_ids:
+                traintest_ids_with_folds[pid] = fold_idx
+        
+        # Create feature DFs with fold info
+        # Filtering preserves order of vectors_df
+        features_traintest_df = vectors_df.filter(pl.col('id').is_in(traintest_set))
+        
+        # Add fold info to features df
+        fold_ids_col = [traintest_ids_with_folds[pid] for pid in features_traintest_df['id'].to_list()]
+        features_traintest_df = features_traintest_df.with_columns(fold_id=pl.Series(fold_ids_col))
+        
+        features_val_df = vectors_df.filter(pl.col('id').is_in(val_set))
+        
+        print('Saving feature parquets to tmp...')
+        self.features_traintest_path = tmp_dir + '/features_traintest_' + self.dataset_name + '.parquet'
+        self.features_val_path = tmp_dir + '/features_val_' + self.dataset_name + '.parquet'
+        
+        features_traintest_df.write_parquet(self.features_traintest_path)
+        features_traintest_df.write_parquet(self.features_traintest_path)
+        features_val_df.write_parquet(self.features_val_path)
+
+        # Generate global feature folds (generic, including all available features)
+        # Include 'id' and all feature columns (but not fold_id) for validation purposes
+        feature_cols = [c for c in features_traintest_df.columns if c != 'fold_id']
+        self.features_folds_dir_tmp = tmp_dir + '/features_traintest_folds' + str(5) + '_' + self.dataset_name
+        prepare_global_feature_folds(features_traintest_df, 5, self.features_folds_dir_tmp, feature_cols)
+        
+        
+        del vectors_df
+        del features_traintest_df
+        del features_val_df
+
         print('Making datasets for clusters')
 
         for cluster_name, cluster_gos in tqdm(go_clusters.items(), total = len(go_clusters)):
             self.go_clusters[cluster_name] = self.goids_to_cluster(cluster_name, cluster_gos, filtered_ann, 
-                parquet_loader, traintest_set, val_set, tmp_dir, dimension_db, 
+                traintest_ids_with_folds, val_set, tmp_dir, dimension_db, 
                 max_proteins_traintest=max_proteins_traintest)
 
         for clustername in self.go_clusters.keys():
@@ -402,188 +396,56 @@ class Dataset:
         print(len(self.ids), 'proteins')
         print(len(self.go_ids), 'go ids')
 
-    def base_benchmark_goids_clustering(dimension_db, go_freqs, go_section_len=24):
-        go_graph = obonet.read_obo(dimension_db.go_basic_path)
-        #root = 'GO:0003674'
-        #go_levels_2 = {}
-        #go_n_annotations = {}
-        all_goids = list(go_freqs.keys())
-        valid_goids = [x for x in all_goids if x in go_graph]
-        valid_goids.sort(key=lambda goid: go_freqs[goid])
-
-        worst_gos = valid_goids[:go_section_len]
-        best = valid_goids[-go_section_len:]
-        middle = int(len(valid_goids)/2)
-        mid_len = int((go_section_len/2))
-        mid_start = middle-mid_len
-        middle_gos = valid_goids[mid_start:mid_start+go_section_len]
-
-        cluster_goids = worst_gos + middle_gos + best
-        cluster_name = 'WORST_MID_BEST_'+str(go_section_len)+'-N'+str(len(cluster_goids))
-
-        clusters = {cluster_name: cluster_goids}
-
-        '''for goid in tqdm(valid_goids):
-            n_annots = go_freqs[goid]
-            
-            simple_paths = nx.all_simple_paths(go_graph, source=goid, target=root)
-            simple_path_lens = [len(p) for p in simple_paths]
-            try:
-                mean_dist = floor(np.mean(simple_path_lens)-1)
-                go_levels_2[goid] = min(7, mean_dist)
-                go_n_annotations[goid] = n_annots
-            except ValueError as err:
-                print(simple_path_lens)
-                print('No path from', goid, 'to', root)
-                print(err)
-                raise(err)
-        
-        levels = {l: [] for l in set(go_levels_2.values())}
-        for goid, level in go_levels_2.items():
-            levels[level].append(goid)
-
-        clusters = {}
-        
-        for l in [5, 6, 7]:
-            gos = levels[l]
-            gos.sort(key=lambda g: go_freqs[g])
-            print(len(gos), 'GO IDs at level', l)
-            
-            worst_gos = gos[:50]
-            last_min_freq = go_freqs[worst_gos[0]]
-            max_freq = go_freqs[worst_gos[-1]]
-            cluster_name = ('Level-'+str(l)+'_Freq-'+str(last_min_freq)+'-'
-                    +str(max_freq)+'_N-'+str(len(worst_gos)))
-            clusters[cluster_name] = worst_gos'''
-        
-        return clusters
-
-    def full_mf_goids_clustering_level_iteration(level, goids, go_freqs, 
-            test_nodes, n_proteins, percentiles, only_test_nodes=False):
-        level_go_freqs = [(go, go_freqs[go]) for go in goids 
-            if (go_freqs[go] / n_proteins) < 0.9]
-        level_go_freqs.sort(key=lambda tp: tp[1])
-        print('Level', level, 'GO Frequencies:', level_go_freqs)
-        print('Proteins:', n_proteins, 'Percentiles:', percentiles)
-        
-        #print('Counting percentiles')
-        perc_index = []
-        last_index = -1
-        for perc in percentiles:
-            index = int(len(level_go_freqs)*(perc/100))
-            perc_index.append((last_index+1, index))
-            last_index = index 
-        perc_index.append((last_index+1, len(level_go_freqs)-1))   
-        #print(perc_index)
-        
-        total_len = 0
-        last_cluster_name = None
-        current_level_test_node_names = test_nodes[level] if level in test_nodes else []
-        
-        current_percentile = 0
-        to_keep = []
-        level_clusters = {}
-        for start, end in perc_index:
-            sub_gos = level_go_freqs[start:end+1]
-            min_freq = sub_gos[0][1]
-            max_freq = sub_gos[-1][1]
-            #print(len(sub_gos))
-            total_len += len(sub_gos)
-            cluster_goids = [x for x, y in sub_gos]
-            
-            if len(sub_gos) > 2:
-                cluster_name = ('Level-'+str(level)+'_Freq-'+str(min_freq)+'-'
-                    +str(max_freq)+'_N-'+str(len(sub_gos)))
-                if only_test_nodes:
-                    if current_percentile in current_level_test_node_names:
-                        to_keep.append(cluster_name)
-                else:
-                    to_keep.append(cluster_name)
-                #if current_percentile in current_level_test_node_names or not only_test_nodes:
-                #    to_keep.append(cluster_name)
-                level_clusters[cluster_name] = cluster_goids
-                #print(cluster_name.split('_'))
-            else:
-                last_cluster = level_clusters[last_cluster_name]
-                level_str, freq_str, n_str = last_cluster_name.split('_')
-                _, last_min_str, _ = freq_str.split('-')
-                last_min_freq = int(last_min_str)
-                new_cluster = last_cluster + cluster_goids
-                cluster_name = ('Level-'+str(level)+'_Freq-'+str(last_min_freq)+'-'
-                    +str(max_freq)+'_N-'+str(len(new_cluster)))
-                if only_test_nodes:
-                    if current_percentile in current_level_test_node_names:
-                        to_keep.append(cluster_name)
-                else:
-                    to_keep.append(cluster_name)
-                level_clusters[cluster_name] = new_cluster
-                del level_clusters[last_cluster_name]
-                if last_cluster_name in to_keep:
-                    to_keep.remove(last_cluster_name)
-                #print(cluster_name.split('_'))
-            last_cluster_name = cluster_name
-            current_percentile += 1
-        
-        return level_clusters, to_keep
-        
-
-    def full_mf_goids_clustering(dimension_db, go_freqs, n_proteins, 
-            percentiles = [40, 70, 90], is_test=False):
-        go_graph = obonet.read_obo(dimension_db.go_basic_path)
-        all_goids = list(go_freqs.keys())
-        valid_goids = [x for x in all_goids if x in go_graph]
-        valid_goids.sort(key=lambda goid: go_freqs[goid])
-
-        root = 'GO:0003674'
-        go_levels_2 = {}
-        print('Finding paths from MF terms to MF Root')
-        for goid in tqdm(valid_goids):
-            if goid != root:
-                simple_paths = nx.all_simple_paths(go_graph, source=goid, target=root)
-                simple_path_lens = [len(p) for p in simple_paths]
-                try:
-                    mean_dist = floor(np.mean(simple_path_lens)-1)
-                    go_levels_2[goid] = min(7, mean_dist)
-                except ValueError as err:
-                    print(simple_path_lens)
-                    print('No path from', goid, 'to', root)
-                    print(err)
-                    raise(err)
-        
-        levels = {l: [] for l in set(go_levels_2.values())}
-        for goid, level in go_levels_2.items():
-            levels[level].append(goid)
-        del go_levels_2
-
-        clusters = {}
-        if is_test:
-            test_nodes = {4: [0], 5: [0], 6: [0, 1], 7: [0, 1, 2]}
-        else:
-            test_nodes = {}
-        for level_name, goids in levels.items():
-            new_clusters, new_to_keep = Dataset.full_mf_goids_clustering_level_iteration(
-                level_name, goids, go_freqs, 
-                test_nodes, n_proteins, percentiles, only_test_nodes=is_test)
-            for n in new_to_keep:
-                clusters[n] = new_clusters[n]
-        
-        return clusters
+    # Clustering methods removed (delegated to clustering.py)
+    
+    # Validation methods moved to validation.py
+    def validate_dataset_integrity(self, datasets_dir, n_folds=5):
+        """Validate all generated .obj files against their source .parquet files."""
+        return validation.validate_dataset_integrity(self, datasets_dir, n_folds)
     
     def save(self, datasets_dir):
         outputdir = path.join(datasets_dir, self.dataset_name)
         if not path.exists(outputdir):
             run_command(['mkdir -p', outputdir])
         json.dump(self.dataset_params, open(path.join(outputdir, 'params.json'), 'w'), indent=4)
-        for cluster_name, cluster_dict in self.go_clusters.items():
-            df_path1_tmp = cluster_dict['traintest_path']
-            df_path1 = outputdir + '/traintest_' + cluster_name + '.parquet'
-            run_command(['mv', df_path1_tmp, df_path1])
-            cluster_dict['traintest_path'] = df_path1
+        if path.exists(self.features_traintest_path):
+             final_features_tt = outputdir + '/features_traintest.parquet'
+             run_command(['mv', self.features_traintest_path, final_features_tt])
+        
+        if path.exists(self.features_val_path):
+             final_features_val = outputdir + '/features_val.parquet'
+             final_features_val = outputdir + '/features_val.parquet'
+             run_command(['mv', self.features_val_path, final_features_val])
+        
+        if path.exists(self.features_folds_dir_tmp):
+             final_features_folds = outputdir + '/features_traintest_folds' + str(5)
+             if path.exists(final_features_folds):
+                 run_command(['rm -rf', final_features_folds])
+             run_command(['mv', self.features_folds_dir_tmp, final_features_folds])
 
-            df_path2_tmp = cluster_dict['val_path']
-            df_path2 = outputdir + '/val_' + cluster_name + '.parquet'
+        for cluster_name, cluster_dict in self.go_clusters.items():
+            df_path1_tmp = cluster_dict['traintest_labels_path']
+            df_path1 = outputdir + '/labels_traintest_' + cluster_name + '.parquet'
+            run_command(['mv', df_path1_tmp, df_path1])
+            cluster_dict['traintest_labels_path'] = df_path1
+
+            df_path2_tmp = cluster_dict['val_labels_path']
+            df_path2 = outputdir + '/labels_val_' + cluster_name + '.parquet'
             run_command(['mv', df_path2_tmp, df_path2])
-            cluster_dict['val_path'] = df_path2
+            cluster_dict['val_labels_path'] = df_path2
+
+            # Move pre-generated label folds
+            folds_path_tmp = cluster_dict['traintest_labels_folds_path']
+            final_folds_path = outputdir + '/labels_traintest_folds' + str(5) + '_' + cluster_name
+            if path.exists(final_folds_path):
+                 run_command(['rm -rf', final_folds_path])
+            run_command(['mv', folds_path_tmp, final_folds_path])
+            
+            del cluster_dict['traintest_labels_folds_path']
+            
+            expected_folds_path = df_path1.replace('.parquet', '_folds5') # Assuming n_folds=5 fixed here
+            run_command(['mv', final_folds_path, expected_folds_path]) # Move to expected location
+
 
         json.dump(self.go_clusters, 
             gzip.open(path.join(outputdir, 'go_clusters.json.gz'), 'wt'), indent=4)

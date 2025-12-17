@@ -40,8 +40,19 @@ The architecture is an ensemble of 27 classifiers, each trained as a 5-fold cros
 ![Deep Learning Architecture](img/architecture.png)
 
 ## Benchmarking of PLM Models
-```
+```sh
 mamba env crete -f mf_swarm_base.yml
 conda run --live-stream -n mf_swarm_base pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 python src/base_benchmark.py ~/data/dimension_db 1 ~/data/mf_datasets 30 0.1
+```
+
+
+## Training MF Swarm
+
+### Dataset Creation
+
+Creates a dataset with a few nodes:
+```sh
+# python src/dataset_maker.py <dimension_db> <release_n> <datasets_dir> <min_proteins_per_mf> <validation_perc> <dataset_type>
+singularity exec --nv --bind /home/pita/data:/home/pita/data,/home/pita/experiments:/home/pita/experiments singularity/sif/mf_swarm.sif python src/dataset_maker.py ~/data/protein_dimension_db cafa6 ~/experiments/mf_swarm_datasets 30 0.10 small_swarm
 ```

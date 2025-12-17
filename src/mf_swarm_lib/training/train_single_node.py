@@ -8,8 +8,7 @@ print("New thread", file=sys.stderr)
 os.environ["KERAS_BACKEND"] = "tensorflow"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-from mf_swarm_lib.training.cross_validation import (split_train_test_n_folds, 
-    train_crossval_node, validate_cv_model_noretrain)
+from mf_swarm_lib.training.cross_validation import (train_crossval_node, validate_cv_model_noretrain)
 
 def training_process(params_json_path, results_json_path):
     local_dir = path.dirname(results_json_path)
@@ -25,11 +24,12 @@ def training_process(params_json_path, results_json_path):
     print(features)
     print(node_name)
     
-    split_train_test_n_folds(node['traintest_path'], features)
+    # split_train_test_n_folds call removed as it is now handled inside train_crossval_node
+    # or via prepare_*_folds functions called therein
     
     #print('getting roc_auc s', file=sys.stderr)
     model_obj = train_crossval_node(params_dict, features, n_folds=n_folds)
-    val_path = node['val_path']
+    val_path = node['val_labels_path']
     go_labels = node['go']
     basilines = node['baseline_metrics']
     print(model_obj.stats)
