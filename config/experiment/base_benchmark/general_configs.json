@@ -1,0 +1,11 @@
+{
+    "min_proteins_per_mf": "40",
+    "val_perc": "0.15",
+    "optimization_dir": "~/experiments/mf_swarm/full_swarm",
+    "pop_size": 14,
+    "n_jobs": 1,
+    "gens": 2,
+    "top_perc": 0.6,
+    "n_to_optimize": 0,
+    "models_to_test": "esm2_t36,ankh_large,esm2_t33,prottrans,ankh_base,esm2_t30,esm2_t12,esm2_t6"
+}

@@ -1,7 +1,4 @@
 dimension_db_dir: ~/data/dimension_db
 datasets_dir: ~/data/mf_datasets
-release_n: 1
-min_proteins_per_mf: 36
-val_perc: 0.15
-test_perc: 0.3
-models_to_test: "esm2_t36,ankh_large,esm2_t33,prottrans,ankh_base,esm2_t30,esm2_t12,esm2_t6"
+release_n: cafa6
+optimization_dir: ~/experiments/mf_swarm/full_swarm

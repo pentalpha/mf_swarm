@@ -87,6 +87,11 @@ def full_mf_goids_clustering_level_iteration(level, goids, go_freqs,
     level_clusters = {}
     for start, end in perc_index:
         sub_gos = level_go_freqs[start:end+1]
+        print('Percentile', current_percentile, 'GOs:', sub_gos)
+        print(f'From {start} to {end}')
+        if len(sub_gos) == 0:
+            print('No GOs found for percentile', current_percentile)
+            continue
         min_freq = sub_gos[0][1]
         max_freq = sub_gos[-1][1]
         #print(len(sub_gos))

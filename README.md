@@ -53,6 +53,14 @@ python src/base_benchmark.py ~/data/dimension_db 1 ~/data/mf_datasets 30 0.1
 
 Creates a dataset with a few nodes:
 ```sh
-# python src/dataset_maker.py <dimension_db> <release_n> <datasets_dir> <min_proteins_per_mf> <validation_perc> <dataset_type>
-singularity exec --nv --bind /home/pita/data:/home/pita/data,/home/pita/experiments:/home/pita/experiments singularity/sif/mf_swarm.sif python src/dataset_maker.py ~/data/protein_dimension_db cafa6 ~/experiments/mf_swarm_datasets 30 0.10 small_swarm
+# Usage: python src/dataset_maker.py -d <dimension_db> -r <release_n> -o <dataset_dir> -m <min_proteins> -v <val_perc> -t <type>
+
+singularity exec --nv --bind /home/pita/data:/home/pita/data,/home/pita/experiments:/home/pita/experiments singularity/sif/mf_swarm.sif \
+    python3 src/dataset_maker.py \
+    -d /home/pita/data/protein_dimension_db \
+    -r cafa6 \
+    -o /home/pita/experiments/mf_swarm_datasets/new_dataset \
+    -m 200 \
+    -v 0.10 \
+    -t small_swarm
 ```

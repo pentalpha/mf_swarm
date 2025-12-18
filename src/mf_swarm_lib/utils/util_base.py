@@ -8,12 +8,15 @@ import json
 
 proj_dir = path.dirname(path.dirname(path.dirname(path.dirname(__file__))))
 configs_dir = proj_dir + '/config'
-
-general_configs = json.load(open(configs_dir+'/general_configs.json', 'r'))
-for key in general_configs.keys():
-    if isinstance(general_configs[key], str):
-        if '~' in general_configs[key]:
-            general_configs[key] = path.expanduser(general_configs[key])
+configs_path = configs_dir+'/general_configs.json'
+if path.exists(configs_path):
+    general_configs = json.load(open(configs_path, 'r'))
+    for key in general_configs.keys():
+        if isinstance(general_configs[key], str):
+            if '~' in general_configs[key]:
+                general_configs[key] = path.expanduser(general_configs[key])
+else:
+    general_configs = {}
 
 #molecular function root
 irrelevant_mfs = {'GO:0003674'}

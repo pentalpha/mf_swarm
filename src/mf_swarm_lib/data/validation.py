@@ -187,7 +187,14 @@ def validate_dataset_integrity(dataset, datasets_dir, n_folds=5):
     print("DATASET INTEGRITY VALIDATION")
     print("="*60)
     
-    outputdir = path.join(datasets_dir, dataset.dataset_name)
+    print("="*60)
+    
+    # Check if we are already pointing to the dataset root (e.g. from dataset_maker.py)
+    if path.exists(path.join(datasets_dir, 'params.json')):
+        outputdir = datasets_dir
+    else:
+        outputdir = path.join(datasets_dir, dataset.dataset_name)
+        
     all_validations_passed = True
     
     # Validate global feature folds

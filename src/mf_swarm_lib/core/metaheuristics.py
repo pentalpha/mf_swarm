@@ -10,7 +10,7 @@ import numpy as np
 from mf_swarm_lib.core.param_translator import ProblemTranslator
 from mf_swarm_lib.utils.plotting import iterative_gens_draw
 
-#param_sets = json.load(open('config/base_param_bounds.json', 'r'))
+#param_sets = json.load(open('config/param_bounds/base_param_bounds.json', 'r'))
 #default_params = param_sets[-1]
 
 #'ankh_base', 'ankh_large', 

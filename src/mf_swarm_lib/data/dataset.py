@@ -263,7 +263,7 @@ class Dataset:
 
     def create_new_dataset(self, dimension_db: DimensionDB, min_proteins_per_mf: int, 
             dataset_type: str, val_perc: float):
-        tmp_dir = path.expanduser('~/tmp')
+        tmp_dir = 'local_tmp'
         if not path.exists(tmp_dir):
             mkdir(tmp_dir)
         
@@ -403,17 +403,14 @@ class Dataset:
         """Validate all generated .obj files against their source .parquet files."""
         return validation.validate_dataset_integrity(self, datasets_dir, n_folds)
     
-    def save(self, datasets_dir):
-        outputdir = path.join(datasets_dir, self.dataset_name)
-        if not path.exists(outputdir):
-            run_command(['mkdir -p', outputdir])
+    def save_to_dir(self, outputdir):
+        run_command(['mkdir -p', outputdir])
         json.dump(self.dataset_params, open(path.join(outputdir, 'params.json'), 'w'), indent=4)
         if path.exists(self.features_traintest_path):
              final_features_tt = outputdir + '/features_traintest.parquet'
              run_command(['mv', self.features_traintest_path, final_features_tt])
         
         if path.exists(self.features_val_path):
-             final_features_val = outputdir + '/features_val.parquet'
              final_features_val = outputdir + '/features_val.parquet'
              run_command(['mv', self.features_val_path, final_features_val])
         
@@ -453,6 +450,12 @@ class Dataset:
         open(path.join(outputdir, 'ids.txt'), 'w').write(ids_str)
         gos_str = '\n'.join(self.go_ids)
         open(path.join(outputdir, 'go_ids.txt'), 'w').write(gos_str)
+
+    def save(self, datasets_dir):
+        outputdir = path.join(datasets_dir, self.dataset_name)
+        if not path.exists(outputdir):
+            run_command(['mkdir -p', outputdir])
+        self.save_to_dir(outputdir)
 
 def find_or_create_dataset(datasets_dir, dataset_type, min_proteins_per_mf, 
         dimension_db_release_n, dimension_db_releases_dir, val_perc):
