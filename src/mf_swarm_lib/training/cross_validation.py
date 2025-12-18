@@ -77,13 +77,13 @@ def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins
     params_dict = params['params_dict']
 
     labels_path = node['traintest_labels_path']
-    # Derive global features folds path. 
-    # labels_path: <dataset_dir>/labels_traintest_<cluster>.parquet
-    # folds dir: <dataset_dir>/features_traintest_folds<N>
+    node_name = params['node_name']
     dirname = path.dirname(labels_path)
     features_base_dir = path.join(dirname, 'features_traintest_folds' + str(n_folds))
+    labels_base_dir = path.join(dirname, 'labels_traintest_' + node_name + '_folds' + str(n_folds))
 
-    labels_base_dir = prepare_labels_folds(labels_path, n_folds, max_proteins)
+    assert path.isdir(labels_base_dir)
+    assert path.isdir(features_base_dir)
 
     models = []
     stats_dicts = []
@@ -95,6 +95,11 @@ def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins
         
         train_y_name = labels_base_dir + '/train_y_'+fold_i_str+'.obj'
         test_y_name = labels_base_dir + '/test_y_'+fold_i_str+'.obj'
+
+        assert path.exists(train_x_name)
+        assert path.exists(test_x_name)
+        assert path.exists(train_y_name)
+        assert path.exists(test_y_name)
 
         # Load global generic feature folds
         train_x_all = load(open(train_x_name, 'rb'))

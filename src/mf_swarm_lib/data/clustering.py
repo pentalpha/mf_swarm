@@ -111,22 +111,29 @@ def full_mf_goids_clustering_level_iteration(level, goids, go_freqs,
             level_clusters[cluster_name] = cluster_goids
             #print(cluster_name.split('_'))
         else:
-            last_cluster = level_clusters[last_cluster_name]
-            level_str, freq_str, n_str = last_cluster_name.split('_')
-            _, last_min_str, _ = freq_str.split('-')
-            last_min_freq = int(last_min_str)
-            new_cluster = last_cluster + cluster_goids
-            cluster_name = ('Level-'+str(level)+'_Freq-'+str(last_min_freq)+'-'
-                +str(max_freq)+'_N-'+str(len(new_cluster)))
+            if last_cluster_name is not None:
+                last_cluster = level_clusters[last_cluster_name]
+                level_str, freq_str, n_str = last_cluster_name.split('_')
+                _, last_min_str, _ = freq_str.split('-')
+                last_min_freq = int(last_min_str)
+                new_cluster = last_cluster + cluster_goids
+                cluster_name = ('Level-'+str(level)+'_Freq-'+str(last_min_freq)+'-'
+                    +str(max_freq)+'_N-'+str(len(new_cluster)))
+            else:
+                new_cluster = cluster_goids
+                cluster_name = ('Level-'+str(level)+'_Freq-'+str(min_freq)+'-'
+                    +str(max_freq)+'_N-'+str(len(new_cluster)))
             if only_test_nodes:
                 if current_percentile in current_level_test_node_names:
                     to_keep.append(cluster_name)
             else:
                 to_keep.append(cluster_name)
             level_clusters[cluster_name] = new_cluster
-            del level_clusters[last_cluster_name]
-            if last_cluster_name in to_keep:
-                to_keep.remove(last_cluster_name)
+
+            if last_cluster_name is not None:
+                del level_clusters[last_cluster_name]
+                if last_cluster_name in to_keep:
+                    to_keep.remove(last_cluster_name)
             #print(cluster_name.split('_'))
         last_cluster_name = cluster_name
         current_percentile += 1

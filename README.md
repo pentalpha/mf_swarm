@@ -51,16 +51,8 @@ python src/base_benchmark.py ~/data/dimension_db 1 ~/data/mf_datasets 30 0.1
 
 ### Dataset Creation
 
-Creates a dataset with a few nodes:
-```sh
-# Usage: python src/dataset_maker.py -d <dimension_db> -r <release_n> -o <dataset_dir> -m <min_proteins> -v <val_perc> -t <type>
+Tests the training with a few nodes:
 
-singularity exec --nv --bind /home/pita/data:/home/pita/data,/home/pita/experiments:/home/pita/experiments singularity/sif/mf_swarm.sif \
-    python3 src/dataset_maker.py \
-    -d /home/pita/data/protein_dimension_db \
-    -r cafa6 \
-    -o /home/pita/experiments/mf_swarm_datasets/new_dataset \
-    -m 200 \
-    -v 0.10 \
-    -t small_swarm
+```sh
+nextflow run main.nf -resume --exp_config config/experiment/full_swarm/small_test.json --exp_name new_dataset_nf
 ```

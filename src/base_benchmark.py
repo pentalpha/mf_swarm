@@ -15,7 +15,7 @@ from tqdm import tqdm
 import polars as pl
 from sklearn import metrics
 import numpy as np
-from mf_swarm_lib.core.metaheuristics import ProblemTranslator, RandomSearchMetaheuristic, param_bounds, GeneticAlgorithm
+from mf_swarm_lib.core.metaheuristics import ProblemTranslator, RandomSearchMetaheuristic, GeneticAlgorithm
 from mf_swarm_lib.data.dataset import Dataset, find_latest_dataset
 from mf_swarm_lib.data.dimension_db import DimensionDB
 from mf_swarm_lib.core.node_factory import create_params_for_features, sample_train_test, train_node

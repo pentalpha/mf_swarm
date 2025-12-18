@@ -17,7 +17,9 @@ from mf_swarm_lib.utils.plotting import iterative_gens_draw
 #'esm2_t6', 'esm2_t12', 'esm2_t30', 'esm2_t33', 'esm2_t36', 
 #'prottrans'
 
-param_bounds = json.load(open('config/base_param_bounds_v2.json', 'r'))
+#param_bounds = json.load(open('config/base_param_bounds_v2.json', 'r'))
+param_bounds = None
+
 
 def calc_custom_param_bounds(benchmarking_dir, testnames, norm_plm=True):
     solutions_paths = [(t, benchmarking_dir+'/'+t+'/solution.json') for t in testnames]

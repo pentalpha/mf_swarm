@@ -1,20 +1,10 @@
-from datetime import datetime
 import json
-from multiprocessing import Pool
 from os import path
-import os
-import sys
 from typing import List
 
 from mf_swarm_lib.core.metaheuristics import ProblemTranslator
-from mf_swarm_lib.data.dataset import (Dataset, find_latest_dataset, 
-    find_or_create_dataset)
-from mf_swarm_lib.data.dimension_db import DimensionDB
-from mf_swarm_lib.utils.plotting import draw_swarm_panel
-from mf_swarm_lib.core.swarm import Swarm
 from mf_swarm_lib.training.train_single_node import training_process
-from mf_swarm_lib.utils.util_base import (proj_dir, run_command, create_params_for_features, 
-    general_configs)
+from mf_swarm_lib.utils.util_base import run_command
 
 
 '''
@@ -37,7 +27,8 @@ return val_results
 '''
 
 def run_optimization(name: str, features: List[str], nodes: dict,
-        local_dir: str, param_bounds: dict, ready_solutions: List[dict] = None):
+        local_dir: str, param_bounds: dict, ready_solutions: List[dict] = None,
+        pop_size = 160, n_jobs = 6, gens = 5, top_perc = 0.6):
     
     print('Preparing', name, features)
 
@@ -60,12 +51,12 @@ def run_optimization(name: str, features: List[str], nodes: dict,
             'max_proteins': 90000,
             'problem_translator': problem_translator.to_dict(),
             'ready_solutions': ready_solutions if ready_solutions else [],
-            'pop_size': general_configs['pop_size'],
-            'n_jobs': general_configs['n_jobs'],
+            'pop_size': pop_size,
+            'n_jobs': n_jobs,
             'metric_name': "fitness",
             'metric_name2': 'f1_score_w_06',
-            'gens': general_configs['gens'],
-            'top_perc': general_configs['top_perc'],
+            'gens': gens,
+            'top_perc': top_perc,
             'log_dir': local_dir + '/logs/' + node_name,
             'features': features,
             'node': node,
@@ -104,12 +95,23 @@ def run_optimization(name: str, features: List[str], nodes: dict,
     return optimizations_done
 
 def run_standard_training(name: str, features: List[str], nodes: dict,
-        local_dir: str, meta_parameters: dict):
+        local_dir: str, meta_parameters: dict, n_jobs: int):
     
     print('Preparing', name, features)
 
     run_command(['mkdir -p', local_dir])
     
+    
+
+    cafatrain_features = [f.replace('.train', '') for f in features]
+    for feature in cafatrain_features:
+        if feature in meta_parameters:
+            meta_parameters[feature+'.train'] = meta_parameters[feature]
+            del meta_parameters[feature]
+        if feature in meta_parameters['input_dims']:
+            meta_parameters['input_dims'][feature+'.train'] = meta_parameters['input_dims'][feature]
+            del meta_parameters['input_dims'][feature]
+
     print('Preparing', name)
     json.dump(meta_parameters, 
         open(local_dir + '/standard_params.json', 'w'), 
@@ -121,7 +123,7 @@ def run_standard_training(name: str, features: List[str], nodes: dict,
             'n_folds': 5,
             'max_proteins': 90000,
             'params_dict': meta_parameters,
-            'n_jobs': general_configs['n_jobs'],
+            'n_jobs': n_jobs,
             'log_dir': local_dir + '/logs/' + node_name,
             'features': features,
             'node': node,
@@ -146,7 +148,7 @@ def run_standard_training(name: str, features: List[str], nodes: dict,
     for exp_path in node_experiments:
         node_name = path.basename(path.dirname(exp_path))
         run_result = exp_path.replace('params', 'results')
-        cmd = ['python', 'src/train_single_node.py', exp_path, run_result]
+        #cmd = ['python', 'src/train_single_node.py', exp_path, run_result]
         if not path.exists(run_result):
             run_command(['mkdir -p', path.dirname(run_result)])
             training_process(exp_path, run_result)
