@@ -103,7 +103,7 @@ def run_standard_training(name: str, features: List[str], nodes: dict,
     
     
 
-    cafatrain_features = [f.replace('.train', '') for f in features]
+    cafatrain_features = [f.replace('.train', '') for f in features if '.train' in f]
     for feature in cafatrain_features:
         if feature in meta_parameters:
             meta_parameters[feature+'.train'] = meta_parameters[feature]

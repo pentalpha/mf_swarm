@@ -78,7 +78,7 @@ process make_trainer {
 
     script:
     """
-    python /src/main_train.py \
+    python -u /src/main_train.py \
         --experiment-name ${experiment_name} \
         --dimension-db-releases-dir ${dimension_db_dir} \
         --dimension-db-release-n ${release_n} \
