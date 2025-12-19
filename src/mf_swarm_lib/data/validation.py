@@ -132,9 +132,16 @@ def validate_label_folds(labels_parquet_path, labels_folds_dir, cluster_name, n_
         fold_str = str(fold_i)
         train_path = path.join(labels_folds_dir, f"train_y_{fold_str}.obj")
         test_path = path.join(labels_folds_dir, f"test_y_{fold_str}.obj")
+        train_ids_path = path.join(labels_folds_dir, f"train_ids_{fold_str}.txt")
+        test_ids_path = path.join(labels_folds_dir, f"test_ids_{fold_str}.txt")
         
         if not path.exists(train_path) or not path.exists(test_path):
             print(f"  ❌ Fold {fold_i}: Missing fold files")
+            all_passed = False
+            continue
+            
+        if not path.exists(train_ids_path) or not path.exists(test_ids_path):
+            print(f"  ❌ Fold {fold_i}: Missing fold ids files")
             all_passed = False
             continue
         
@@ -142,14 +149,35 @@ def validate_label_folds(labels_parquet_path, labels_folds_dir, cluster_name, n_
             train_y = pload(f)
         with open(test_path, 'rb') as f:
             test_y = pload(f)
+
+        train_ids = open(train_ids_path, 'r').read().split('\n')
+        test_ids = open(test_ids_path, 'r').read().split('\n')
         
         # Get corresponding dataframes
-        test_df = df.filter(pl.col('fold_id') == fold_i)
-        train_df = df.filter(pl.col('fold_id') != fold_i)
+        train_ids_df = pl.DataFrame({"id": train_ids})
+        test_ids_df = pl.DataFrame({"id": test_ids})
+        
+        # This keeps the order of the *_ids_df and pulls in data from the main df
+        train_df = train_ids_df.join(df, on="id", how="left")
+        test_df = test_ids_df.join(df, on="id", how="left")
         
         # Convert labels column to numpy
         train_df_y = np.array(train_df['labels'].to_list())
         test_df_y = np.array(test_df['labels'].to_list())
+
+        # Find NaN rows and count
+        train_nan_rows = np.isnan(train_df_y)
+        test_nan_rows = np.isnan(test_df_y)
+        train_nan_count = np.sum(train_nan_rows)
+        test_nan_count = np.sum(test_nan_rows)
+
+        #throw error if NaNs are found
+        if train_nan_count > 0:
+            print(f"  ❌ Fold {fold_i} train: NaNs found in labels")
+            all_passed = False
+        if test_nan_count > 0:
+            print(f"  ❌ Fold {fold_i} test: NaNs found in labels")
+            all_passed = False
         
         # Validate shapes and data
         if train_y.shape != train_df_y.shape:

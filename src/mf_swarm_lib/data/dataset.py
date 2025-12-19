@@ -70,7 +70,8 @@ def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release
 class Dataset:
     def __init__(self, dataset_path = None, dimension_db: DimensionDB = None, 
             min_proteins_per_mf: int = None, 
-            dataset_type: str = None, val_perc: float = None) -> None:
+            dataset_type: str = None, val_perc: float = None, n_folds = 5) -> None:
+        self.n_folds = n_folds
         if dataset_path == None:
             self.new_dataset = True
             self.create_new_dataset(dimension_db, min_proteins_per_mf, dataset_type, val_perc)
@@ -137,9 +138,10 @@ class Dataset:
         return traintest_ids
 
     def goids_to_cluster(self, cluster_name, cluster_gos, filtered_ann, 
-                         traintest_ids_with_folds: dict, val_ids, tmp_dir,
-                         dimension_db,
-                         max_proteins_traintest=None, 
+                         traintest_ids, traintest_ids_with_folds, val_ids, 
+                         tmp_dir, dimension_db,
+                         folds_description: dict,
+                         max_proteins_traintest=None,
                          n_folds=5):
         print('Filtering annotation')
         cluster_ann = {k: v.intersection(cluster_gos) for k, v in filtered_ann.items()}
@@ -147,7 +149,7 @@ class Dataset:
         
         
         # Use all available IDs (both positive and negative samples)
-        traintest_ids = list(traintest_ids_with_folds.keys())
+        #traintest_ids = list(traintest_ids_with_folds.keys())
         # val_ids is already a list passed in
         
         cluster_gos_set = set(cluster_gos)
@@ -176,7 +178,7 @@ class Dataset:
                 to_remove.append(goid)
         
         print('Creating labels for dataset df')
-        loaded_ids = list(traintest_ids) + list(val_ids)
+        loaded_ids = traintest_ids + list(val_ids)
         print('Creating labels for dataset df')
         #print('All IDs:', loaded_ids)
         labels, cluster_go_proper_order = create_go_labels(loaded_ids, cluster_ann, 
@@ -190,7 +192,7 @@ class Dataset:
         })
 
         traintest_df = cluster_df.filter(pl.col('id').is_in(traintest_ids))
-        
+        id_to_fold = {}
         # Add fold info
         fold_ids = [traintest_ids_with_folds[pid] for pid in traintest_df['id'].to_list()]
         traintest_df = traintest_df.with_columns(fold_id=pl.Series(fold_ids))
@@ -232,9 +234,15 @@ class Dataset:
         auprc_mac_base = metrics.average_precision_score(val_df_y_np, rand_df_y_np)
         auprc_w_base = metrics.average_precision_score(val_df_y_np, rand_df_y_np, average='weighted')
 
+        #Save used and not used GO ids
+        label_names_path = tmp_dir + '/labels_' + self.dataset_name + '-' + cluster_name + '.txt'
+        open(label_names_path, 'w').write('\n'.join(cluster_go_proper_order))
+        labels_not_used_path = tmp_dir + '/labels_not_used_' + self.dataset_name + '-' + cluster_name + '.txt'
+        open(labels_not_used_path, 'w').write('\n'.join(set(to_remove).union(gos_to_remove)))
+
         print('Saving labels parquet to tmp')
         traintest_labels_folds_dir_tmp = tmp_dir + '/labels_traintest_folds' + str(n_folds) + '_' + self.dataset_name + '-' + cluster_name
-        prepare_label_folds_obj(traintest_folded, n_folds, traintest_labels_folds_dir_tmp)
+        prepare_label_folds_obj(traintest_folded, n_folds, traintest_labels_folds_dir_tmp, folds_description)
 
         traintest_df_path = tmp_dir + '/labels_traintest_' + self.dataset_name + '-' + cluster_name + '.parquet'
         val_df_path = tmp_dir + '/labels_val_' + self.dataset_name + '-' + cluster_name + '.parquet'
@@ -248,6 +256,8 @@ class Dataset:
         cluster = {
             'id': loaded_ids,
             'go': cluster_go_proper_order,
+            'label_names_path': label_names_path,
+            'labels_not_used_path': labels_not_used_path,
             'traintest_labels_path': traintest_df_path,
             'val_labels_path': val_df_path,
             'traintest_labels_folds_path': traintest_labels_folds_dir_tmp, # Store temp path to be moved later
@@ -343,7 +353,7 @@ class Dataset:
         # We shuffle a copy to assign random folds, but keep the original list ordered
         traintest_for_folding = list(traintest_set)
         random.shuffle(traintest_for_folding)
-        traintest_folds = np.array_split(traintest_for_folding, 5) # 5 folds constant
+        traintest_folds = np.array_split(traintest_for_folding, self.n_folds) # 5 folds constant
         
         traintest_ids_with_folds = {}
         for fold_idx, fold_ids in enumerate(traintest_folds):
@@ -365,16 +375,17 @@ class Dataset:
         self.features_val_path = tmp_dir + '/features_val_' + self.dataset_name + '.parquet'
         
         features_traintest_df.write_parquet(self.features_traintest_path)
-        features_traintest_df.write_parquet(self.features_traintest_path)
         features_val_df.write_parquet(self.features_val_path)
 
         # Generate global feature folds (generic, including all available features)
         # Include 'id' and all feature columns (but not fold_id) for validation purposes
         feature_cols = [c for c in features_traintest_df.columns if c != 'fold_id']
-        self.features_folds_dir_tmp = tmp_dir + '/features_traintest_folds' + str(5) + '_' + self.dataset_name
-        prepare_global_feature_folds(features_traintest_df, 5, self.features_folds_dir_tmp, feature_cols)
+        self.features_folds_dir_tmp = tmp_dir + '/features_traintest_folds' + str(self.n_folds) + '_' + self.dataset_name
+        _, folds_description = prepare_global_feature_folds(features_traintest_df, self.n_folds, 
+            self.features_folds_dir_tmp, feature_cols)
         
-        
+        traintest_original_order = features_traintest_df['id'].to_list()
+
         del vectors_df
         del features_traintest_df
         del features_val_df
@@ -383,8 +394,8 @@ class Dataset:
 
         for cluster_name, cluster_gos in tqdm(go_clusters.items(), total = len(go_clusters)):
             self.go_clusters[cluster_name] = self.goids_to_cluster(cluster_name, cluster_gos, filtered_ann, 
-                traintest_ids_with_folds, val_set, tmp_dir, dimension_db, 
-                max_proteins_traintest=max_proteins_traintest)
+                traintest_original_order, traintest_ids_with_folds, val_set, tmp_dir, dimension_db, folds_description,
+                max_proteins_traintest=max_proteins_traintest, n_folds=self.n_folds)
 
         for clustername in self.go_clusters.keys():
             print(clustername, 'cluster created')
@@ -415,7 +426,7 @@ class Dataset:
              run_command(['mv', self.features_val_path, final_features_val])
         
         if path.exists(self.features_folds_dir_tmp):
-             final_features_folds = outputdir + '/features_traintest_folds' + str(5)
+             final_features_folds = outputdir + '/features_traintest_folds' + str(self.n_folds)
              if path.exists(final_features_folds):
                  run_command(['rm -rf', final_features_folds])
              run_command(['mv', self.features_folds_dir_tmp, final_features_folds])
@@ -433,16 +444,19 @@ class Dataset:
 
             # Move pre-generated label folds
             folds_path_tmp = cluster_dict['traintest_labels_folds_path']
-            final_folds_path = outputdir + '/labels_traintest_folds' + str(5) + '_' + cluster_name
+            final_folds_path = outputdir + '/labels_traintest_folds' + str(self.n_folds) + '_' + cluster_name
             if path.exists(final_folds_path):
                  run_command(['rm -rf', final_folds_path])
             run_command(['mv', folds_path_tmp, final_folds_path])
             
             del cluster_dict['traintest_labels_folds_path']
             
-            expected_folds_path = df_path1.replace('.parquet', '_folds5') # Assuming n_folds=5 fixed here
+            expected_folds_path = df_path1.replace('.parquet', '_folds' + str(self.n_folds)) # Assuming n_folds=5 fixed here
             run_command(['mv', final_folds_path, expected_folds_path]) # Move to expected location
 
+            #Save label names files
+            run_command(['mv', cluster_dict['label_names_path'], outputdir])
+            run_command(['mv', cluster_dict['labels_not_used_path'], outputdir])
 
         json.dump(self.go_clusters, 
             gzip.open(path.join(outputdir, 'go_clusters.json.gz'), 'wt'), indent=4)
