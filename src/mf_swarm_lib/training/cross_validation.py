@@ -119,7 +119,7 @@ def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins
         print(stats)
 
     annot_model = BasicEnsemble(models, stats_dicts)
-    print(annot_model.stats)
+    print('Ensemble stats:',annot_model.stats)
 
     return annot_model
 

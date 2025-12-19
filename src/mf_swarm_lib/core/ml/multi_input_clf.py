@@ -5,7 +5,7 @@ from typing import List
 import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 from torch.optim.lr_scheduler import LambdaLR
 
 import numpy as np
@@ -59,7 +59,7 @@ class FeatureSubNet(nn.Module):
 
 # Rede principal
 class MultiInputNet(nn.Module):
-    def __init__(self, feature_names, params_dict, n_labels):
+    def __init__(self, feature_names, params_dict, n_labels, label_counts: np.ndarray, n_samples_train):
         super().__init__()
         input_dims = [params_dict['input_dims'][f] for f in feature_names]
         # 1) Cria as sub-redes na mesma ordem de `feature_names`
@@ -86,6 +86,8 @@ class MultiInputNet(nn.Module):
         self.n_labels = n_labels
         self.feature_names = feature_names
         self.params_dict = params_dict
+        self.label_counts = label_counts
+        self.n_samples_train = n_samples_train
         self.history = []
 
     def save(self, output_dir):
@@ -96,6 +98,8 @@ class MultiInputNet(nn.Module):
             'n_epochs': self.n_epochs,
             'feature_names': self.feature_names,
             'n_labels': self.n_labels,
+            'label_counts': self.label_counts.tolist(),
+            'n_samples_train': self.n_samples_train,
             'history': self.history
         }
         json.dump(metaparams, open(f"{output_dir}/metaparams.json", 'w'), indent=5)
@@ -105,7 +109,9 @@ class MultiInputNet(nn.Module):
         metaparams = json.load(open(f"{output_dir}/metaparams.json", 'r'))
         model = MultiInputNet(metaparams['feature_names'],
             metaparams['params_dict'],
-            metaparams['n_labels'])
+            metaparams['n_labels'],
+            np.array(metaparams['label_counts']),
+            metaparams['n_samples_train'])
         model.history = metaparams['history']
         model.load_state_dict(torch.load(f"{output_dir}/best_state.pth"))
         model.eval()
@@ -130,7 +136,10 @@ class MultiInputNet(nn.Module):
             lr:          float,
             patience:    int,
             lr_decay_every: int,
-            device:      torch.device):
+            device:      torch.device,
+            smoothing:   float = 0.1,
+            use_adamw:   bool = True,
+            use_smoothing: bool = True):
         """
         Treina o modelo usando Early Stopping e LR Scheduler.
         - train_loader, val_loader: DataLoaders com (xs, y)
@@ -141,14 +150,19 @@ class MultiInputNet(nn.Module):
         - device: 'cpu' ou 'cuda'
         """
         self.to(device)
-        optimizer = Adam(self.parameters(), lr=lr)
+        if not use_adamw:
+            optimizer = Adam(self.parameters(), lr=lr)
+        else:
+            optimizer = AdamW(self.parameters(), lr=lr, weight_decay=1e-4)
         criterion = nn.BCELoss()
         scheduler = LambdaLR(optimizer, lr_lambda=lambda e: 0.5**(e // lr_decay_every))
 
         best_metric_val = float('inf')
         best_auprc_val = 0.0
         epochs_no_improve = 0
-
+        label_counts = torch.from_numpy(self.label_counts).float().to(device)
+        #smoothing_vector = (smoothing * (1 - (label_counts / self.n_samples_train))).float().to(device) # Less smoothing for rare classes
+        smoothing_vector = 0.05
         for epoch in range(1, n_epochs+1):
             #print('fit')
             # ---- Treino ----
@@ -158,8 +172,14 @@ class MultiInputNet(nn.Module):
                 xs = [x.to(device) for x in xs]
                 y  = y.to(device)
                 optimizer.zero_grad()
+                #pred = self(xs)
+                #loss = criterion(pred, y)
+                if use_smoothing:
+                    y_smoothed = y * (1 - smoothing_vector) + 0.5 * smoothing_vector
+                else:
+                    y_smoothed = y
                 pred = self(xs)
-                loss = criterion(pred, y)
+                loss = criterion(pred, y_smoothed) # Use smoothed labels for training
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item() * y.size(0)
@@ -186,7 +206,7 @@ class MultiInputNet(nn.Module):
             all_preds = np.vstack(all_preds)
             all_trues = np.vstack(all_trues)
             auprc = metrics.average_precision_score(all_trues, all_preds, average='weighted')
-            auprc_rounded = round(auprc, 2)
+            auprc_rounded = round(auprc, 4)
             print(f"Epoch {epoch}/{n_epochs} — "
                   f"train_loss: {train_loss:.6f}, "
                   f"val_loss: {val_loss:.6f}, "
@@ -202,20 +222,26 @@ class MultiInputNet(nn.Module):
             if auprc_rounded > best_auprc_val:
                 best_auprc_val = auprc_rounded
                 print('AUPRC improvement!')
-                #torch.save(self.state_dict(), "best_model.pth")
-
-            if val_loss < best_metric_val:
-                best_metric_val = val_loss
-                print('Loss improvement!')
                 epochs_no_improve = 0
+                torch.save(self.state_dict(), "best_model.pth")
             else:
                 epochs_no_improve += 1
                 if epochs_no_improve >= patience:
                     print(f"Early stopping at {epoch} epochs, after {epochs_no_improve} without improvements.")
                     break
+
+            if val_loss < best_metric_val:
+                best_metric_val = val_loss
+                print('Loss improvement!')
+            '''    epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
+                if epochs_no_improve >= patience:
+                    print(f"Early stopping at {epoch} epochs, after {epochs_no_improve} without improvements.")
+                    break'''
         self.n_epochs = epoch
         # Carrega melhor modelo
-        #self.load_state_dict(torch.load("best_model.pth", map_location=device))
+        self.load_state_dict(torch.load("best_model.pth", map_location=device))
         return best_metric_val
 
     def predict_and_test(self,
@@ -271,6 +297,8 @@ class MultiInputNet(nn.Module):
 def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     print('Preparando')
     feature_names = [n for n, x in train_x]
+    n_samples_train = train_x[0][1].shape[0]
+
     # Prepara DataLoader
     train_ds = ProteinFuncDataset(train_x, train_y)
     test_ds  = ProteinFuncDataset(test_x, test_y)
@@ -278,9 +306,11 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
     train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True)
     test_loader  = DataLoader(test_ds,  batch_size=bs)
     output_dim = train_y.shape[1]
+    #Calc freq per class/col
+    label_counts = np.sum(train_y, axis=0)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print('Definindo modelo')
-    model = MultiInputNet(feature_names, params_dict, output_dim)
+    model = MultiInputNet(feature_names, params_dict, output_dim, label_counts, n_samples_train)
     print('Fit')
     # Treinar
     best_val_loss = model.fit(
@@ -290,7 +320,7 @@ def makeMultiClassifierModel(train_x, train_y, test_x, test_y, params_dict):
         #n_epochs=3,
         lr=params_dict["final"]["learning_rate"],
         patience=params_dict["final"]["patience"],
-        lr_decay_every=10,
+        lr_decay_every=20,
         device=device
     )
     n_epochs = model.n_epochs

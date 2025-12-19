@@ -1,12 +1,12 @@
 {
     "ankh_base": {
-        "dropout_rate": 0.7273763547614519,
+        "dropout_rate": 0.6273763547614519,
         "l1_dim": 661,
         "l2_dim": 1668,
         "leakyrelu_1_alpha": 0.026733205039049884
     },
     "esm2_t33": {
-        "dropout_rate": 0.7956844174771458,
+        "dropout_rate": 0.6956844174771458,
         "l1_dim": 636,
         "l2_dim": 433,
         "leakyrelu_1_alpha": 0.05286754528717738
@@ -19,11 +19,11 @@
     },
     "final": {
         "batch_size": 130,
-        "dropout_rate": 0.35154186929241227,
-        "epochs": 39,
-        "final_dim": 508,
-        "learning_rate": 0.0006536915731422689,
-        "patience": 9
+        "dropout_rate": 0.45,
+        "epochs": 100,
+        "final_dim": 1024,
+        "learning_rate": 0.0001,
+        "patience": 15
     },
     "taxa_256": {
         "dropout_rate": 0.3545169266005104,
