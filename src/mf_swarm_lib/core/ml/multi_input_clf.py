@@ -80,7 +80,10 @@ class MultiInputNet(nn.Module):
         self.fc_comb = nn.Linear(concat_dim, final_p["final_dim"])
         self.act_comb = nn.ReLU()
         self.drop_comb = nn.Dropout(final_p["dropout_rate"])
-        self.out = nn.Linear(final_p["final_dim"], n_labels)
+        self.fc_comb2 = nn.Linear(final_p["final_dim"], final_p["final_dim"] // 2)
+        self.act_comb2 = nn.ReLU()
+        self.drop_comb2 = nn.Dropout(final_p["dropout_rate"])
+        self.out = nn.Linear(final_p["final_dim"] // 2, n_labels)
         self.sigmoid = nn.Sigmoid()
         self.n_epochs = 0
         self.n_labels = n_labels
@@ -123,9 +126,16 @@ class MultiInputNet(nn.Module):
         outs = [net(x) for net, x in zip(self.subnets, xs)]
         x = torch.cat(outs, dim=1)
         x = self.bn_comb(x)
+        # Layer 1
         x = self.fc_comb(x)
         x = self.act_comb(x)
         x = self.drop_comb(x)
+        
+        # Layer 2 (Inter-Feature Layer)
+        x = self.fc_comb2(x)
+        x = self.act_comb2(x)
+        x = self.drop_comb2(x)
+        
         x = self.out(x)
         return self.sigmoid(x)
 
@@ -155,14 +165,16 @@ class MultiInputNet(nn.Module):
         else:
             optimizer = AdamW(self.parameters(), lr=lr, weight_decay=1e-4)
         criterion = nn.BCELoss()
-        scheduler = LambdaLR(optimizer, lr_lambda=lambda e: 0.5**(e // lr_decay_every))
-
+        #scheduler = LambdaLR(optimizer, lr_lambda=lambda e: 0.5**(e // lr_decay_every))
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='max', factor=0.5, patience=5,
+        )
         best_metric_val = float('inf')
         best_auprc_val = 0.0
         epochs_no_improve = 0
         label_counts = torch.from_numpy(self.label_counts).float().to(device)
         #smoothing_vector = (smoothing * (1 - (label_counts / self.n_samples_train))).float().to(device) # Less smoothing for rare classes
-        smoothing_vector = 0.05
+        smoothing_vector = 0.02
         for epoch in range(1, n_epochs+1):
             #print('fit')
             # ---- Treino ----
@@ -199,7 +211,6 @@ class MultiInputNet(nn.Module):
                     all_preds.append(pred.cpu().numpy())
                     all_trues.append(y.cpu().numpy())
             val_loss /= len(val_loader.dataset)
-            scheduler.step()
 
             #print('val2')
             # Concatena para métricas
@@ -207,6 +218,7 @@ class MultiInputNet(nn.Module):
             all_trues = np.vstack(all_trues)
             auprc = metrics.average_precision_score(all_trues, all_preds, average='weighted')
             auprc_rounded = round(auprc, 4)
+            scheduler.step(auprc)
             print(f"Epoch {epoch}/{n_epochs} — "
                   f"train_loss: {train_loss:.6f}, "
                   f"val_loss: {val_loss:.6f}, "

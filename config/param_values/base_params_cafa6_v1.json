@@ -6,9 +6,9 @@
         "leakyrelu_1_alpha": 0.026733205039049884
     },
     "esm2_t33": {
-        "dropout_rate": 0.6956844174771458,
-        "l1_dim": 636,
-        "l2_dim": 433,
+        "dropout_rate": 0.5,
+        "l1_dim": 1024,
+        "l2_dim": 512,
         "leakyrelu_1_alpha": 0.05286754528717738
     },
     "prottrans": {
@@ -19,11 +19,11 @@
     },
     "final": {
         "batch_size": 130,
-        "dropout_rate": 0.45,
-        "epochs": 100,
+        "dropout_rate": 0.4,
+        "epochs": 150,
         "final_dim": 1024,
-        "learning_rate": 0.0001,
-        "patience": 15
+        "learning_rate": 0.0002,
+        "patience": 25
     },
     "taxa_256": {
         "dropout_rate": 0.3545169266005104,
