@@ -10,7 +10,7 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 from mf_swarm_lib.training.cross_validation import (train_crossval_node, validate_cv_model_noretrain)
 
-def training_process(params_json_path, results_json_path):
+def training_process(params_json_path, results_json_path, is_test=False):
     local_dir = path.dirname(results_json_path)
     print(local_dir)
 
@@ -28,7 +28,7 @@ def training_process(params_json_path, results_json_path):
     # or via prepare_*_folds functions called therein
     
     #print('getting roc_auc s', file=sys.stderr)
-    model_obj = train_crossval_node(params_dict, features, n_folds=n_folds)
+    model_obj = train_crossval_node(params_dict, features, n_folds=n_folds, is_test=is_test)
     val_path = node['val_labels_path']
     go_labels = node['go']
     basilines = node['baseline_metrics']

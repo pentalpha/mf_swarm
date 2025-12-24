@@ -12,6 +12,7 @@ import numpy as np
 from tqdm import tqdm
 from sklearn import metrics
 
+from mf_swarm_lib.utils.util_base import plm_sizes
 from mf_swarm_lib.core.ml.custom_statistics import faster_fmax
 
 def get_batch_of_indexes(n_samples, batch_size):
@@ -61,11 +62,16 @@ class FeatureSubNet(nn.Module):
 class MultiInputNet(nn.Module):
     def __init__(self, feature_names, params_dict, n_labels, label_counts: np.ndarray, n_samples_train):
         super().__init__()
-        input_dims = [params_dict['input_dims'][f] for f in feature_names]
         # 1) Cria as sub-redes na mesma ordem de `feature_names`
         self.subnets = nn.ModuleList()
-        for name, in_dim in zip(feature_names, input_dims):
+        for name in feature_names:
             p = params_dict[name]
+            if name in plm_sizes:
+                in_dim = plm_sizes[name]
+            else:
+                in_dim = plm_sizes[name.replace('.train', '')]
+            print(name, in_dim, type(in_dim))
+            print(p)
             self.subnets.append(FeatureSubNet(
                 in_dim=in_dim,
                 l1_dim=p["l1_dim"],

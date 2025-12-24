@@ -94,11 +94,11 @@ class Swarm:
             json.dump(self.deepred_metrics, open(self.deepred_norm_metrics_path, 'w'), indent=2)
         self.deepred_metrics = json.load(open(self.deepred_norm_metrics_path, 'r'))
 
-        self.deepred_norm2_metrics_path = self.swarm_dir + '/validation_results-deepred2.txt'
+        '''self.deepred_norm2_metrics_path = self.swarm_dir + '/validation_results-deepred2.txt'
         if not path.exists(self.deepred_norm2_metrics_path):
             self.deepred_metrics2 = self.evaluate_deepred_normalization2()
             json.dump(self.deepred_metrics2, open(self.deepred_norm2_metrics_path, 'w'), indent=2)
-        self.deepred_metrics2 = json.load(open(self.deepred_norm2_metrics_path, 'r'))
+        self.deepred_metrics2 = json.load(open(self.deepred_norm2_metrics_path, 'r'))'''
 
         self.metrics_df = self.make_metrics_df()
         self.metrics_df = self.metrics_df.sort(by=['Curve Fmax', 'Discrete F1 W', 'Discrete Precision W'])
@@ -167,11 +167,11 @@ class Swarm:
     def evaluate_deepred_normalization(self):
         fmax_value = self.raw_metrics['Best F1 Threshold']
         print('Fmax th value:', fmax_value)
-        th_diffs = [0.0, -0.175, -0.15, -0.125, 
+        '''th_diffs = [0.0, -0.175, -0.15, -0.125, 
                     -0.1, -0.075, -0.05, -0.025, 
                     0.025, 0.05, 0.075, 0.1, 0.125, 0.15]
         alternative_thresholds = [fmax_value+x for x in th_diffs]
-        alternative_thresholds = [x for x in alternative_thresholds if x > 0 and x < 1]
+        alternative_thresholds = [x for x in alternative_thresholds if x > 0 and x < 1]'''
         raw_df = pl.read_parquet(self.raw_scores_path)
         results = {}
         results['raw_fmax_th'] = eval_predictions_dataset_bool(
@@ -180,13 +180,18 @@ class Swarm:
         )
         self.raw_metrics['boolean'] = results['raw_fmax_th']
         print('Raw Fmax Threshold:', json.dumps(results['raw_fmax_th'], indent=2))
-        alternative_thresholds = [self.go_id_thresholds] + alternative_thresholds
+        '''alternative_thresholds = [self.go_id_thresholds] + alternative_thresholds
         for threshold in alternative_thresholds:
             deepred_metrics = calc_deepred_scores(raw_df, self.go_id_sequence, 
                                                   self.paths_to_root, 
                                                   threshold=threshold)
             th_id = 'DeePred Norm ' + ('Min '+str(round(threshold, 3)) if isinstance(threshold, float) else 'By GO ID')
-            results[th_id] = deepred_metrics
+            results[th_id] = deepred_metrics'''
+        deepred_metrics = calc_deepred_scores(raw_df, self.go_id_sequence, 
+            self.paths_to_root, 
+            threshold=self.go_id_thresholds)
+        th_id = 'DeePred Norm By GO ID'
+        results[th_id] = deepred_metrics
         return results
     
     def evaluate_deepred_normalization2(self):
@@ -222,8 +227,8 @@ class Swarm:
                          ('Parents Min Norm.', self.parents_min_metrics)]
         for name, d in self.deepred_metrics.items():
             metrics_dicts.append((name, d))
-        for name, d in self.deepred_metrics2.items():
-            metrics_dicts.append((name, d))
+        '''for name, d in self.deepred_metrics2.items():
+            metrics_dicts.append((name, d))'''
         
         lines = []
         for name, d in metrics_dicts:

@@ -4,7 +4,7 @@ from typing import List
 
 from mf_swarm_lib.core.metaheuristics import ProblemTranslator
 from mf_swarm_lib.training.train_single_node import training_process
-from mf_swarm_lib.utils.util_base import run_command
+from mf_swarm_lib.utils.util_base import run_command, plm_sizes
 
 
 '''
@@ -28,7 +28,7 @@ return val_results
 
 def run_optimization(name: str, features: List[str], nodes: dict,
         local_dir: str, param_bounds: dict, ready_solutions: List[dict] = None,
-        pop_size = 160, n_jobs = 6, gens = 5, top_perc = 0.6):
+        pop_size = 160, n_jobs = 6, gens = 1, top_perc = 0.6):
     
     print('Preparing', name, features)
 
@@ -95,7 +95,7 @@ def run_optimization(name: str, features: List[str], nodes: dict,
     return optimizations_done
 
 def run_standard_training(name: str, features: List[str], nodes: dict,
-        local_dir: str, meta_parameters: dict, n_jobs: int):
+        local_dir: str, meta_parameters: dict, n_jobs: int, is_test=False):
     
     print('Preparing', name, features)
 
@@ -108,10 +108,12 @@ def run_standard_training(name: str, features: List[str], nodes: dict,
         if feature in meta_parameters:
             meta_parameters[feature+'.train'] = meta_parameters[feature]
             del meta_parameters[feature]
-        if feature in meta_parameters['input_dims']:
-            meta_parameters['input_dims'][feature+'.train'] = meta_parameters['input_dims'][feature]
-            del meta_parameters['input_dims'][feature]
-
+        #if feature in meta_parameters['input_dims']:
+        #    meta_parameters['input_dims'][feature+'.train'] = meta_parameters['input_dims'][feature]
+        #    del meta_parameters['input_dims'][feature]
+    meta_parameters['input_dims'] = {f: plm_sizes[f] if f in plm_sizes 
+        else plm_sizes[f.replace('.train', '')] 
+        for f in features}
     print('Preparing', name)
     json.dump(meta_parameters, 
         open(local_dir + '/standard_params.json', 'w'), 
@@ -151,7 +153,7 @@ def run_standard_training(name: str, features: List[str], nodes: dict,
         #cmd = ['python', 'src/train_single_node.py', exp_path, run_result]
         if not path.exists(run_result):
             run_command(['mkdir -p', path.dirname(run_result)])
-            training_process(exp_path, run_result)
+            training_process(exp_path, run_result, is_test=is_test)
             #print(' '.join(cmd))
             #run_command(cmd)
         if not path.exists(run_result):

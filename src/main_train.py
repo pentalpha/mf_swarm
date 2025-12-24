@@ -62,8 +62,18 @@ if __name__ == '__main__':
     if not path.exists(local_dir):
         run_command(['mkdir -p', local_dir])
 
+    configs_used_dict = {
+        "min_proteins_per_mf": min_proteins_per_mf,
+        "val_perc": val_perc,
+        "n_jobs": n_jobs,
+        "n_to_optimize": 0,
+        "dataset_type":dataset.dataset_type
+    }
+
+    json.dump(configs_used_dict, open(local_dir+'/configs_used.json', 'w'), indent=2)
+
     standard_trainings = run_standard_training(name, feature_list, dataset.go_clusters,
-        local_dir, base_params, n_jobs=n_jobs)
+        local_dir, base_params, n_jobs=n_jobs, is_test=True)
     #sort standard trainings by AUPRC W
     standard_trainings_sorted = sorted(standard_trainings.keys(), 
         key=lambda node_name: standard_trainings[node_name]['validation']['AUPRC W'])
@@ -88,4 +98,4 @@ if __name__ == '__main__':
     run_command(['mkdir -p', plots_dir])
     draw_swarm_panel(local_dir, plots_dir)
 
-    #new_swarm = Swarm(local_dir, dimension_db.go_basic_path)
+    new_swarm = Swarm(local_dir, dimension_db.go_basic_path)

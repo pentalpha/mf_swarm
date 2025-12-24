@@ -50,7 +50,7 @@ process create_dataset {
     """
     ls -sh $dimension_db_dir
     ls -sh $dimension_db_dir/$release_n
-    python /src/dataset_maker.py \\
+    python ${params.src_dir}/dataset_maker.py \\
         -d $dimension_db_dir \\
         -r $release_n \\
         -o dataset \\
@@ -78,7 +78,7 @@ process make_trainer {
 
     script:
     """
-    python -u /src/main_train.py \
+    python -u ${params.src_dir}/main_train.py \
         --experiment-name ${experiment_name} \
         --dimension-db-releases-dir ${dimension_db_dir} \
         --dimension-db-release-n ${release_n} \
@@ -97,6 +97,10 @@ workflow {
     }
     if (!params.exp_name) {
         error "Please specify experiment name with --exp_name"
+    }
+    if (!params.base_params_path) {
+        error "Please specify base params path with --base_params_path"
+        //params.base_params_path = "config/param_values/base_params_cafa6_v1.json"
     }
 
     // Parse JSON config

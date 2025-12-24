@@ -32,6 +32,10 @@ dataset_types = {
     'small_swarm'
 }
 
+test_types = {
+    'small_swarm'
+}
+
 
 def find_latest_dataset(datasets_dir, dataset_type, min_proteins_per_mf, release_n, val_perc):
     dataset_paths = glob(datasets_dir+'/'+dataset_type+'_*')
@@ -314,8 +318,7 @@ class Dataset:
                 cluster_names_all = sorted(go_clusters.keys())
                 print('All clusters: ', cluster_names_all)
                 small_cluster_names = [cluster_names_all[0],
-                    cluster_names_all[len(cluster_names_all)//2],
-                    cluster_names_all[-1]]
+                    cluster_names_all[1]]
                 print('Only using: ', small_cluster_names)
                 go_clusters = {c_name: go_clusters[c_name] for c_name in small_cluster_names}
             self.datasets_to_load = ['taxa_256', 'ankh_base', 'esm2_t33']

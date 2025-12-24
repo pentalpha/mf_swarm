@@ -1,3 +1,5 @@
+import random
+
 network_mandatory_params = ['l1_dim', 'l2_dim', 'dropout_rate', 'leakyrelu_1_alpha']
 
 param_types = {
@@ -32,6 +34,8 @@ class ProblemTranslator:
                     self.upper_bounds.append(upper)
                     self.params_list.append((key, name))
         
+        self.bounds = [(self.lower_bounds[i], self.upper_bounds[i]) 
+            for i in range(len(self.upper_bounds))]
         '''print('Param bounds:')
         for i in range(len(self.params_list)):
             print(self.params_list[i], self.upper_bounds[i], self.lower_bounds[i])'''
@@ -77,3 +81,16 @@ class ProblemTranslator:
         #print('Encoded solution', param_dict, 'to')
         #print(vec)
         return vec
+
+    def generate_population(self, pop_size, ready_solutions=[]):
+        self.population = []
+        for sol in ready_solutions:
+            encoded = self.encode(sol)
+            self.population.append(encoded)
+        
+        for _ in range(pop_size):
+            new_solution = []
+            for lb, ub in self.bounds:
+                val = random.uniform(lb, ub)
+                new_solution.append(val)
+            self.population.append(new_solution)

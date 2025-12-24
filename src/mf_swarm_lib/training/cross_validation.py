@@ -72,12 +72,14 @@ def prepare_labels_folds(labels_path, n_folds, max_proteins=60000):
     return base_dir
 
 # Trains a node using cross-validation, returning an ensemble of models
-def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins=60000):
+def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins=60000,
+        is_test=False):
     node = params['node']
     params_dict = params['params_dict']
 
     labels_path = node['traintest_labels_path']
     node_name = params['node_name']
+    print(node_name)
     dirname = path.dirname(labels_path)
     features_base_dir = path.join(dirname, 'features_traintest_folds' + str(n_folds))
     labels_base_dir = path.join(dirname, 'labels_traintest_' + node_name + '_folds' + str(n_folds))
@@ -87,6 +89,9 @@ def train_crossval_node(params: dict, features: list, n_folds: int, max_proteins
 
     models = []
     stats_dicts = []
+    if is_test:
+        n_folds = 2
+    
     for fold_i in range(n_folds):
         fold_i_str = str(fold_i)
 

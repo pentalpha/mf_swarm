@@ -307,3 +307,6 @@ def load_swarm_params_and_results_jsons(full_swarm_exp_dir):
             results_jsons.append(None)
 
     return params_jsons, results_jsons
+
+def create_optimization_stats_report(swarm_dir, results_jsons):
+    pass
