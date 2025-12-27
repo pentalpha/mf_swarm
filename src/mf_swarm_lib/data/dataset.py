@@ -29,11 +29,11 @@ dataset_types = {
     'taxon_benchmark_cv',
     'cell_location',
     'full_swarm',
-    'small_swarm'
+    'top_mf_clusters'
 }
 
 test_types = {
-    'small_swarm'
+    'top_mf_clusters'
 }
 
 
@@ -310,11 +310,11 @@ class Dataset:
                 self.datasets_to_load = ['ankh_base', 'prottrans'] + dimension_db.taxa_onehot_names + dimension_db.taxa_profile_names
             else:
                 self.datasets_to_load = ['taxa_256', 'ankh_base', 'esm2_t33']
-        elif dataset_type in ["full_swarm", 'small_swarm']:
+        elif dataset_type in ["full_swarm", 'top_mf_clusters']:
             print('full_mf_goids_clustering')
             go_clusters = full_mf_goids_clustering(dimension_db, go_freqs, 
                 len(traintest_set), is_test=False)
-            if dataset_type == 'small_swarm':
+            if dataset_type == 'top_mf_clusters':
                 cluster_names_all = sorted(go_clusters.keys())
                 print('All clusters: ', cluster_names_all)
                 small_cluster_names = [cluster_names_all[0],

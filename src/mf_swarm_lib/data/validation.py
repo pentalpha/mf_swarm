@@ -161,9 +161,41 @@ def validate_label_folds(labels_parquet_path, labels_folds_dir, cluster_name, n_
         train_df = train_ids_df.join(df, on="id", how="left")
         test_df = test_ids_df.join(df, on="id", how="left")
         
+        
+        # Check label consistency before converting to numpy
+        for split_name, current_df in [('train', train_df), ('test', test_df)]:
+            # Check for nulls (failed joins)
+            null_count = current_df['labels'].null_count()
+            if null_count > 0:
+                print(f"  ❌ Fold {fold_i} {split_name}: {null_count} labels are null (ids missing in parquet?)")
+                # Check which IDs are missing
+                missing_ids = current_df.filter(pl.col('labels').is_null())['id'].head(5).to_list()
+                print(f"     Example missing IDs: {missing_ids}")
+                all_passed = False
+                continue
+
+            # Check lengths if it's a list column
+            try:
+                lengths = current_df['labels'].list.len().unique()
+                if lengths.len() > 1:
+                    print(f"  ❌ Fold {fold_i} {split_name}: Inhomogeneous label lengths detected: {lengths.to_list()}")
+                    all_passed = False
+                    continue
+            except Exception:
+                # Fallback if not a list column or other error
+                pass
+
+        if not all_passed:
+            continue
+
         # Convert labels column to numpy
-        train_df_y = np.array(train_df['labels'].to_list())
-        test_df_y = np.array(test_df['labels'].to_list())
+        try:
+            train_df_y = np.array(train_df['labels'].to_list())
+            test_df_y = np.array(test_df['labels'].to_list())
+        except ValueError as e:
+            print(f"  ❌ Fold {fold_i}: Error converting labels to numpy: {e}")
+            all_passed = False
+            continue
 
         # Find NaN rows and count
         train_nan_rows = np.isnan(train_df_y)

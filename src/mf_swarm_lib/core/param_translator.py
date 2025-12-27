@@ -83,14 +83,16 @@ class ProblemTranslator:
         return vec
 
     def generate_population(self, pop_size, ready_solutions=[]):
-        self.population = []
+        population = []
         for sol in ready_solutions:
             encoded = self.encode(sol)
-            self.population.append(encoded)
+            population.append(encoded)
         
         for _ in range(pop_size):
             new_solution = []
             for lb, ub in self.bounds:
                 val = random.uniform(lb, ub)
                 new_solution.append(val)
-            self.population.append(new_solution)
+            population.append(new_solution)
+        
+        return population

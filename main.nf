@@ -7,89 +7,16 @@ params.exp_config = null
 params.exp_name = null
 
 // Generate timestamp for unique experiment naming
-//def timestamp = new Date().format("yyyy-MM-dd_HH-mm")
+def timestamp = new Date().format("yyyy-MM-dd_HH-mm")
 def experiment_dir = "${params.optimization_dir}/${params.exp_name}"
-/*
- * Process to create dataset using dataset_maker.py
- */
 import groovy.json.JsonSlurper
 //configs_used.json
 
-//Copy configs dict to experiment_dir/configs_used.json process
-process copy_configs {
-    publishDir "${experiment_dir}/configs_used.json", mode: 'copy'
 
-    input:
-    path configs_file
-    output:
-    path "configs_used.json", emit: configs_json
-    script:
-    """
-    cp $configs_file configs_used.json
-    """
-}
-
-process create_dataset {
-    publishDir "${experiment_dir}", mode: 'copy'
-
-    input:
-    val split_config
-    path dimension_db_dir
-    val release_n
-
-    output:
-    path "dataset", emit: dataset_dir
-    path "dataset/params.json", emit: dataset_params
-    path "dataset/labels*.parquet", emit: dataset_labels
-    path "dataset/features*.parquet", emit: dataset_features
-    path "dataset/ids.txt", emit: dataset_ids
-    path "dataset/go_ids.txt", emit: dataset_go_ids
-    path "dataset/go_clusters.json.gz", emit: dataset_go_clusters
-
-    script:
-    """
-    ls -sh $dimension_db_dir
-    ls -sh $dimension_db_dir/$release_n
-    python ${params.src_dir}/dataset_maker.py \\
-        -d $dimension_db_dir \\
-        -r $release_n \\
-        -o dataset \\
-        -m ${split_config.min_proteins_per_mf} \\
-        -v ${split_config.val_perc} \\
-        -t ${split_config.dataset_type}
-    """
-}
-
-process make_trainer {
-    publishDir "${experiment_dir}/trainer", mode: 'copy'
-
-    input:
-    val experiment_name
-    path dimension_db_dir
-    val release_n
-    path dataset_dir
-    val min_proteins_per_mf
-    val val_perc
-    path base_params_path
-    val n_jobs
-
-    output:
-    path "${experiment_name}", emit: experiment_trainer_dir
-
-    script:
-    """
-    python -u ${params.src_dir}/main_train.py \
-        --experiment-name ${experiment_name} \
-        --dimension-db-releases-dir ${dimension_db_dir} \
-        --dimension-db-release-n ${release_n} \
-        --dataset-dir ${dataset_dir} \
-        --min-proteins-per-mf ${min_proteins_per_mf} \
-        --val-perc ${val_perc} \
-        --base-params-path ${base_params_path} \
-        --n-jobs ${n_jobs}
-    """
-    
-}
+// Modules
+include { copy_configs } from './modules/utils'
+include { create_dataset } from './modules/dataset'
+include { make_trainer } from './modules/training'
 
 workflow {
     if (!params.exp_config) {

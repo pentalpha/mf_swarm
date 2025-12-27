@@ -1,7 +1,7 @@
 {
-    "min_proteins_per_mf": "40",
-    "val_perc": "0.15",
+    "min_proteins_per_mf": "80",
+    "val_perc": "0.6",
     "n_jobs": 1,
-    "n_to_optimize": 3,
-    "dataset_type": "small_swarm"
+    "n_to_optimize": 0,
+    "dataset_type": "top_mf_clusters"
 }

@@ -189,7 +189,7 @@ if __name__ == '__main__':
         }
     }
     dataset_config_example = {
-        'dataset_type': 'small_swarm',
+        'dataset_type': 'top_mf_clusters',
         'validation_size': 0.2,
         'test_size': 0.2
     }

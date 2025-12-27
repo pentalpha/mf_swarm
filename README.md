@@ -56,3 +56,9 @@ Tests the training with a few nodes:
 ```sh
 nextflow run main.nf -resume --exp_config config/experiment/full_swarm/small_test.json --exp_name new_dataset_nf
 ```
+
+Create dataset and test optimization:
+```sh
+singularity exec --nv --bind /home/pita/.cache:/home/pita/.cache,/home/pita/.config:/home/pita/.config,src:/src singularity/sif/mf_swarm.sif python src/dataset_maker.py -d /home/pita/data/protein_dimension_db -r cafa6 -o tmp/tmp_dataset3 -m 40 -v 0.5 -t top_mf_clusters && \
+singularity exec --nv --bind /home/pita/.cache:/home/pita/.cache,/home/pita/.config:/home/pita/.config,src:/src singularity/sif/mf_swarm.sif python src/optimize_on_dataset.py --dataset-path tmp/tmp_dataset3 --training-dir tmp/mf_training_test3 --pop-size 8 --n-jobs 1 --ready-solutions config/param_values/base_params_cafa6_v1.json --param-bounds config/param_bounds/base_param_bounds.v2.for_tests.json --report-path test/report2.json --commentary "Initial Test" --pddb-release-dir ~/data/protein_dimension_db/cafa6/
+```
